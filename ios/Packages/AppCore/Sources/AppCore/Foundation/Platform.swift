@@ -4,10 +4,11 @@ import Foundation
 // The Mobile app passes real implementations (Keychain, URLSession, ...); the CLI passes fixtures.
 // Add a new edge here (never import a platform framework into Core); see the reflex-add-edge skill.
 
-@MainActor
-public protocol Storage: AnyObject {
-    func read(_ key: String) -> String?
-    func write(_ key: String, _ value: String?)
+/// Persistence (the Keychain in the app). Async because the real store does blocking I/O, which must not
+/// run on the main actor; `update` calls it from a `Task` and gets the result back as a Message.
+public protocol Storage: Sendable {
+    func read(_ key: String) async -> String?
+    func write(_ key: String, _ value: String?) async
 }
 
 @MainActor

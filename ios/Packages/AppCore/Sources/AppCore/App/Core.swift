@@ -14,7 +14,7 @@ import IntrospectionKit
 public final class Core {
     public let app: AppRoot
 
-    public init(storage: Storage, transport: any GraphQLTransport, device: DeviceCapabilities, flags: FeatureFlags) {
+    public init(storage: any Storage, transport: any GraphQLTransport, device: DeviceCapabilities, flags: FeatureFlags) {
         let services = Services(client: GraphQLClient(transport: transport), storage: storage, device: device, flags: flags)
         app = AppRoot(services: services)
     }
@@ -24,7 +24,7 @@ public final class Core {
 @MainActor
 public struct Services {
     public let client: GraphQLClient
-    public let storage: Storage
+    public let storage: any Storage
     public let device: DeviceCapabilities
     public let flags: FeatureFlags
 }

@@ -6,13 +6,14 @@ import Security
 // Real implementations of Core's platform protocols (AppCore/Foundation/Platform.swift).
 // Their fixture counterparts live in ios/AppCLI (FixtureAdapters.swift). Keep each pair in sync.
 
-@MainActor
-final class KeychainStorage: Storage {
+/// `SecItem*` calls block on securityd, so they run off the main actor (`@concurrent`).
+struct KeychainStorage: Storage {
     private let service: String
 
     init(service: String) { self.service = service }
 
-    func read(_ key: String) -> String? {
+    @concurrent
+    func read(_ key: String) async -> String? {
         var query = baseQuery(key)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -21,7 +22,8 @@ final class KeychainStorage: Storage {
         return String(data: data, encoding: .utf8)
     }
 
-    func write(_ key: String, _ value: String?) {
+    @concurrent
+    func write(_ key: String, _ value: String?) async {
         SecItemDelete(baseQuery(key) as CFDictionary)
         guard let value else { return }
         var query = baseQuery(key)

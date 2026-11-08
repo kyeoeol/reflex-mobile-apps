@@ -67,4 +67,9 @@ Rules:
   (`UNAuthorizationStatus`).
 - Anything time- or randomness-dependent is an edge too (a `Clock` protocol), so tests stay deterministic.
 - Mutating edges (requesting a permission, scanning) return their result asynchronously → a Message → `update`.
+- Pick the protocol shape by cost. A cheap synchronous read (a flag, a capability, a stored value) is a
+  `@MainActor protocol X: AnyObject` like `FeatureFlags` (Kotlin: plain `fun`). Anything that waits on I/O, the OS,
+  or the user is a `Sendable` protocol with `async` methods like `Storage` or `GraphQLTransport` (Kotlin:
+  `suspend fun`), and the real implementation leaves the main actor (Swift `@concurrent`, Kotlin
+  `withContext(Dispatchers.IO)`); `update` starts it in `Task { [edge] in … self.send(message: …) }` like a service call.
 - Never `#if os(...)` / `Build.VERSION` inside Core.

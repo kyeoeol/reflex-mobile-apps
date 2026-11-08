@@ -1,6 +1,5 @@
 /// `Storage` without a device: used by the CLI (seeded from a fixture's `storage`) and handy for previews.
-@MainActor
-public final class InMemoryStorage: Storage {
+public actor InMemoryStorage: Storage {
     private var values: [String: String]
 
     public init(_ values: [String: String] = [:]) { self.values = values }

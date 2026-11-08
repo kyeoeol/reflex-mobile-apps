@@ -23,8 +23,9 @@ import java.net.URL
 /** Placeholder persistence; move secrets to the Android Keystore when the product needs them. */
 class PreferencesStorage(context: Context) : Storage {
     private val prefs = context.getSharedPreferences("reflex.storage", Context.MODE_PRIVATE)
-    override fun read(key: String): String? = prefs.getString(key, null)
-    override fun write(key: String, value: String?) {
+    // The first read loads the prefs file from disk, so both calls stay off Main.
+    override suspend fun read(key: String): String? = withContext(Dispatchers.IO) { prefs.getString(key, null) }
+    override suspend fun write(key: String, value: String?) = withContext(Dispatchers.IO) {
         prefs.edit().apply { if (value == null) remove(key) else putString(key, value) }.apply()
     }
 }
