@@ -44,6 +44,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+          # Caches ~/.gradle/caches and ~/.gradle/wrapper (keyed on the Gradle build files),
+          # so CI doesn't re-download the Gradle distribution and dependencies every run.
+          cache: gradle
       - name: Unit tests (primitives) + core builds on the plain JVM
         run: cd android && ./gradlew --no-configuration-cache test :core:build
       - name: Behavior tests (Android)
@@ -66,6 +69,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+          # Caches ~/.gradle/caches and ~/.gradle/wrapper (keyed on the Gradle build files),
+          # so CI doesn't re-download the Gradle distribution and dependencies every run.
+          cache: gradle
       - run: cd android && ./gradlew :app:assembleDebug :app:assembleRelease
 
   gate:
