@@ -15,6 +15,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -39,13 +40,19 @@ fun SampleListScreen(viewModel: SampleListViewModel) {
                     Button(onClick = { viewModel.send(SampleListViewModel.Action.Refresh) }) { Text("Retry") }
                 }
             }
-            LazyColumn {
-                items(state.items, key = { it.id }) { item ->
-                    ListItem(
-                        headlineContent = { Text(item.title) },
-                        trailingContent = { Text("${item.count}") },
-                        modifier = Modifier.clickable { viewModel.send(SampleListViewModel.Action.SelectItem(item.id)) },
-                    )
+            PullToRefreshBox(
+                isRefreshing = state.isLoading,
+                onRefresh = { viewModel.send(SampleListViewModel.Action.Refresh) },
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                LazyColumn(Modifier.fillMaxSize()) {
+                    items(state.items, key = { it.id }) { item ->
+                        ListItem(
+                            headlineContent = { Text(item.title) },
+                            trailingContent = { Text("${item.count}") },
+                            modifier = Modifier.clickable { viewModel.send(SampleListViewModel.Action.SelectItem(item.id)) },
+                        )
+                    }
                 }
             }
         }

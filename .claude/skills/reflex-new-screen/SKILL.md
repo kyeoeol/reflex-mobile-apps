@@ -60,6 +60,9 @@ both platforms (format in the ViewModel, not in the node).
   Buttons call `viewModel.send(action: …)`; enabled/disabled comes from state (`.disabled(!state.canX)`).
 - Android: `@Composable fun XScreen(viewModel: XViewModel)` with
   `val state by viewModel.state.collectAsStateWithLifecycle()`; `onClick = { viewModel.send(Action.X) }`.
+- Pull to refresh: iOS `.refreshable { viewModel.send(action: .refresh); await waitUntil { !viewModel.state.isLoading } }`
+  (`AppMobile/StateWaiting.swift`), so the spinner stays until Core has the result; Android
+  `PullToRefreshBox(isRefreshing = state.isLoading, onRefresh = { viewModel.send(Action.Refresh) })`.
 - No business rules, no service calls, no navigation decisions in views. Back navigation calls the navigator.
 - Never import IntrospectionKit/ReflexHost in app code outside `Debug/` (iOS) or `src/debug/` (Android).
 

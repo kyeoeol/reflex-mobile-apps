@@ -24,7 +24,10 @@ struct SampleListView: View {
             }
         }
         .overlay { if state.isLoading && state.items.isEmpty { ProgressView() } }
-        .refreshable { viewModel.send(action: .refresh) }
+        .refreshable {
+            viewModel.send(action: .refresh)
+            await waitUntil { !viewModel.state.isLoading }   // keeps the spinner up until Core has the result
+        }
         .navigationTitle("Items")
     }
 }
