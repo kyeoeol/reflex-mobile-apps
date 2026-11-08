@@ -1,0 +1,28 @@
+{
+  "graphql": [
+    {
+      "operation": "SampleItems",
+      "response": {"data": {"items": [
+        {"id": "1", "title": "First item", "count": 2},
+        {"id": "2", "title": "Second item", "count": 0}
+      ]}}
+    },
+    {
+      "operation": "SampleItem",
+      "variables": {"id": "1"},
+      "response": {"data": {"item": {"id": "1", "title": "First item", "count": 2}}}
+    },
+    {
+      "operation": "SampleItem",
+      "variables": {"id": "2"},
+      "response": {"data": {"item": {"id": "2", "title": "Second item", "count": 0}}}
+    },
+    {
+      "operation": "SampleSave",
+      "response": {"data": {"sampleSave": {"userErrors": []}}}
+    }
+  ],
+  "storage": {},
+  "device": {"biometricsAvailable": false},
+  "flags": {}
+}

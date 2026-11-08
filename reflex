@@ -1,0 +1,296 @@
+#!/usr/bin/env bash
+# reflex: the single entry point for building, testing, checking and driving the app.
+#
+#   ./reflex setup [--force]        Verify (and install) the toolchain once per machine. Required first step.
+#   ./reflex build [ios|android]    Build the headless hosts (default: both)
+#   ./reflex test [files...]        Build, then run behavior tests on both platforms (REFLEX_PLATFORMS=ios,android)
+#   ./reflex test --live [files...] Run tests/reflex-live against running DEBUG builds (REFLEX_TARGET=live)
+#   ./reflex check                  Architecture lint (core purity, node rules, single writer, parity, fixtures)
+#   ./reflex unit                   Platform unit tests (primitives only: XCTest/Swift Testing + JUnit)
+#   ./reflex cli <ios|android> [--fixture Domain.scenario]... [--deeplink url] [--json] [--live [--port N]]
+#   ./reflex serve <ios|android> [--fixture Domain.scenario]... [--port 7777]
+#                                   Serve one fixture-built core over the live socket protocol (no simulator needed)
+#   ./reflex app <ios|android>      Build the Mobile app shells (SwiftUI via XcodeGen / Compose via Gradle)
+#   ./reflex ci                     check + unit + test: the merge gate
+#
+# Every command except `setup` requires .reflex/toolchain.local.json. If it is missing, setup runs first.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STATE_DIR="$ROOT/.reflex"
+RECORD="$STATE_DIR/toolchain.local.json"
+
+# Android SDK packages the app module compiles against (keep in sync with android/app/build.gradle.kts).
+ANDROID_PACKAGES=("platform-tools" "platforms;android-37.0" "build-tools;36.0.0")  # build-tools: AGP 9.5 default
+
+log() { printf '%s\n' "$*" >&2; }
+die() { log "error: $*"; exit 1; }
+
+# ------------------------------------------------------------------------------------------------
+# setup: check every tool; install what is missing (Homebrew); record the result locally.
+
+json_escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
+
+SETUP_ROWS=()
+SETUP_FAILED=()
+record_tool() { # name status version path
+  SETUP_ROWS+=("    \"$1\": {\"status\": \"$2\", \"version\": \"$(json_escape "$3")\", \"path\": \"$(json_escape "$4")\"}")
+  printf '  %-14s %-10s %s\n' "$1" "$2" "$3" >&2
+}
+fail_tool() { # name message
+  SETUP_FAILED+=("$1: $2")
+  printf '  %-14s %-10s %s\n' "$1" "missing" "$2" >&2
+}
+
+brew_install() { # formula-or-cask args...
+  command -v brew >/dev/null || return 1
+  log "    installing: brew install $*"
+  brew install "$@" >&2
+}
+
+find_java_home() {
+  local candidate
+  for candidate in "${JAVA_HOME:-}" "$(/usr/libexec/java_home -v 21 2>/dev/null || true)" \
+    "$(brew --prefix openjdk@21 2>/dev/null || true)/libexec/openjdk.jdk/Contents/Home"; do
+    if [[ -n "$candidate" && -x "$candidate/bin/java" ]] && "$candidate/bin/java" -version 2>&1 | grep -q 'version "21'; then
+      printf '%s' "$candidate"; return 0
+    fi
+  done
+  return 1
+}
+
+find_android_home() {
+  local candidate
+  for candidate in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "$HOME/Library/Android/sdk"; do
+    [[ -n "$candidate" && -d "$candidate/platforms" ]] && { printf '%s' "$candidate"; return 0; }
+  done
+  return 1
+}
+
+find_sdkmanager() {
+  local candidate
+  for candidate in "$(command -v sdkmanager || true)" "${ANDROID_HOME:-$HOME/Library/Android/sdk}/cmdline-tools/latest/bin/sdkmanager" \
+    "$(brew --prefix 2>/dev/null || echo /opt/homebrew)/share/android-commandlinetools/cmdline-tools/latest/bin/sdkmanager"; do
+    [[ -n "$candidate" && -x "$candidate" ]] && { printf '%s' "$candidate"; return 0; }
+  done
+  return 1
+}
+
+cmd_setup() {
+  if [[ "${1:-}" != "--force" && -f "$RECORD" ]]; then
+    log "Toolchain already verified ($(sed -n 's/.*"checkedAt": "\(.*\)".*/\1/p' "$RECORD")). Use './reflex setup --force' to re-check."
+    return 0
+  fi
+  [[ "$(uname -s)" == "Darwin" ]] || die "setup targets macOS (iOS needs Xcode). On CI, install the tools in the workflow and set REFLEX_SKIP_SETUP=1."
+  log "Checking the Reflex toolchain (installing anything missing)..."
+  local status
+
+  # Homebrew: the installer for everything else.
+  if command -v brew >/dev/null; then record_tool homebrew present "$(brew --version | head -1)" "$(command -v brew)"
+  else fail_tool homebrew "install from https://brew.sh, then re-run ./reflex setup"; fi
+
+  # Xcode + Swift: can't be installed from the command line.
+  if xcodebuild -version >/dev/null 2>&1; then
+    record_tool xcode present "$(xcodebuild -version | head -1)" "$(xcode-select -p)"
+    record_tool swift present "$(swift --version 2>&1 | sed -n 's/.*Swift version \([0-9.]*\).*/\1/p' | head -1)" "$(command -v swift)"
+  else
+    fail_tool xcode "install Xcode from the App Store, then: sudo xcode-select -s /Applications/Xcode.app && xcodebuild -runFirstLaunch"
+  fi
+
+  # Bun: test SDK, CLI, lint.
+  status=present
+  command -v bun >/dev/null || [[ -x "$HOME/.bun/bin/bun" ]] || { brew_install oven-sh/bun/bun && status=installed; }
+  local bun_bin; bun_bin="$(command -v bun || echo "$HOME/.bun/bin/bun")"
+  if [[ -x "$bun_bin" ]]; then record_tool bun "$status" "$("$bun_bin" --version)" "$bun_bin"
+  else fail_tool bun "brew install oven-sh/bun/bun"; fi
+
+  # JDK 21: Gradle and the headless Android host. (Gradle itself comes from the committed wrapper.)
+  status=present
+  local java_home; java_home="$(find_java_home || true)"
+  [[ -n "$java_home" ]] || { brew_install openjdk@21 && status=installed; java_home="$(find_java_home || true)"; }
+  if [[ -n "$java_home" ]]; then record_tool jdk "$status" "$("$java_home/bin/java" -version 2>&1 | head -1)" "$java_home"
+  else fail_tool jdk "brew install openjdk@21"; fi
+
+  # XcodeGen: generates the iOS app project from ios/AppMobile/project.yml.
+  status=present
+  command -v xcodegen >/dev/null || { brew_install xcodegen && status=installed; }
+  if command -v xcodegen >/dev/null; then record_tool xcodegen "$status" "$(xcodegen --version)" "$(command -v xcodegen)"
+  else fail_tool xcodegen "brew install xcodegen"; fi
+
+  # Android SDK: the Compose app module (headless tests don't need it).
+  status=present
+  local android_home; android_home="$(find_android_home || true)"
+  local missing_packages=()
+  local pkg
+  for pkg in "${ANDROID_PACKAGES[@]}"; do
+    [[ -n "$android_home" && -d "$android_home/${pkg//;//}" ]] || missing_packages+=("$pkg")
+  done
+  if ((${#missing_packages[@]})); then
+    local sdkmanager; sdkmanager="$(find_sdkmanager || true)"
+    [[ -n "$sdkmanager" ]] || { brew_install --cask android-commandlinetools && sdkmanager="$(find_sdkmanager || true)"; }
+    if [[ -n "$sdkmanager" && -n "$java_home" ]]; then
+      android_home="${android_home:-$HOME/Library/Android/sdk}"
+      log "    installing Android SDK packages into $android_home: ${missing_packages[*]}"
+      yes | JAVA_HOME="$java_home" "$sdkmanager" --sdk_root="$android_home" --licenses >/dev/null 2>&1 || true
+      JAVA_HOME="$java_home" "$sdkmanager" --sdk_root="$android_home" "${missing_packages[@]}" >&2 && status=installed
+    fi
+  fi
+  if android_home="$(find_android_home)"; then
+    record_tool android-sdk "$status" "$(ls "$android_home/platforms" | sort -V | tail -1)" "$android_home"
+    printf 'sdk.dir=%s\n' "$android_home" >"$ROOT/android/local.properties"
+  else
+    fail_tool android-sdk "brew install --cask android-commandlinetools; sdkmanager ${ANDROID_PACKAGES[*]}"
+  fi
+
+  if ((${#SETUP_FAILED[@]})); then
+    log ""
+    log "Toolchain incomplete. Nothing was recorded; fix these and re-run ./reflex setup:"
+    printf '  - %s\n' "${SETUP_FAILED[@]}" >&2
+    exit 1
+  fi
+
+  # Test SDK dev dependencies (types only; the SDK has no runtime dependencies).
+  (cd "$ROOT/tests" && "$bun_bin" install --silent >&2) || log "    note: 'bun install' in tests/ failed (types only; tests still run)"
+
+  mkdir -p "$STATE_DIR"
+  {
+    printf '{\n'
+    printf '  "checkedAt": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '  "machine": {"os": "%s", "arch": "%s"},\n' "$(sw_vers -productName) $(sw_vers -productVersion)" "$(uname -m)"
+    printf '  "tools": {\n'
+    local i
+    for i in "${!SETUP_ROWS[@]}"; do
+      printf '%s%s\n' "${SETUP_ROWS[$i]}" "$([[ $i -lt $((${#SETUP_ROWS[@]} - 1)) ]] && echo ,)"
+    done
+    printf '  },\n'
+    printf '  "env": {\n    "JAVA_HOME": "%s",\n    "ANDROID_HOME": "%s"\n  }\n}\n' "$(json_escape "$java_home")" "$(json_escape "$android_home")"
+  } >"$RECORD"
+  log ""
+  log "Toolchain verified. Recorded in ${RECORD#"$ROOT/"} (machine-local, gitignored)."
+}
+
+# ------------------------------------------------------------------------------------------------
+# The gate: every other command needs a verified toolchain.
+
+require_toolchain() {
+  if [[ "${REFLEX_SKIP_SETUP:-}" == "1" || "${CI:-}" == "true" ]]; then return 0; fi
+  if [[ ! -f "$RECORD" ]]; then
+    log "No toolchain record (.reflex/toolchain.local.json). Running setup first."
+    cmd_setup
+  fi
+  local value
+  value="$(sed -n 's/.*"JAVA_HOME": "\(.*\)".*/\1/p' "$RECORD")"; [[ -n "$value" ]] && export JAVA_HOME="${JAVA_HOME:-$value}"
+  value="$(sed -n 's/.*"ANDROID_HOME": "\(.*\)".*/\1/p' "$RECORD")"; [[ -n "$value" ]] && export ANDROID_HOME="${ANDROID_HOME:-$value}"
+  [[ -x "$HOME/.bun/bin/bun" ]] && export PATH="$PATH:$HOME/.bun/bin"
+  return 0
+}
+
+gradle() { (cd "$ROOT/android" && ./gradlew --quiet "$@"); }
+
+# ------------------------------------------------------------------------------------------------
+
+cmd_build() {
+  local target="${1:-all}"
+  [[ "$target" =~ ^(ios|android|all)$ ]] || die "build: unknown target '$target' (ios|android)"
+  if [[ "$target" != android ]]; then
+    log "Building iOS headless host (ios/AppCLI)..."
+    (cd "$ROOT/ios/AppCLI" && swift build -q)
+  fi
+  if [[ "$target" != ios ]]; then
+    log "Building Android headless host (android/cli)..."
+    gradle :cli:fatJar
+  fi
+}
+
+platforms_to_build() {
+  local platforms="${REFLEX_PLATFORMS:-ios,android}"
+  [[ "$platforms" == *ios* && "$platforms" == *android* ]] && { echo all; return; }
+  echo "$platforms"
+}
+
+cmd_test() {
+  local dir="$ROOT/tests/behavior"
+  if [[ "${1:-}" == "--live" ]]; then
+    shift; dir="$ROOT/tests/reflex-live"; export REFLEX_TARGET=live
+  else
+    cmd_build "$(platforms_to_build)"
+  fi
+  local files=()
+  if (($#)); then
+    local f; for f in "$@"; do files+=("$(cd "$(dirname "$f")" && pwd)/$(basename "$f")"); done
+  else
+    while IFS= read -r f; do files+=("$f"); done < <(find "$dir" -name '*.cli-test.ts' | sort)
+  fi
+  ((${#files[@]})) || die "no *.cli-test.ts files in ${dir#"$ROOT/"}"
+  (cd "$ROOT/tests" && bun test "${files[@]}")
+}
+
+cmd_check() { bun "$ROOT/tools/check-architecture.ts"; }
+
+cmd_unit() {
+  log "Swift unit tests (IntrospectionKit)..."
+  (cd "$ROOT/ios/Packages/IntrospectionKit" && swift test -q 2>&1 | tail -3)
+  log "Kotlin unit tests..."
+  gradle test
+}
+
+cmd_cli() {
+  local platform="${1:-}"
+  [[ "$platform" == "ios" || "$platform" == "android" ]] || die "usage: reflex cli <ios|android> [--fixture Domain.scenario]... [--deeplink url] [--json] [--live [--port N]]"
+  [[ " $* " == *" --live "* ]] || cmd_build "$platform" >&2
+  exec bun "$ROOT/tests/sdk/cli.ts" "$@"
+}
+
+cmd_serve() {
+  local platform="${1:-}"; shift || true
+  local port=7777 forwarded=()
+  while (($#)); do
+    case "$1" in
+      --port) port="$2"; shift 2 ;;
+      --fixture | --deeplink) forwarded+=("$1" "$2"); shift 2 ;;
+      *) die "serve: unknown argument '$1'" ;;
+    esac
+  done
+  case "$platform" in
+    ios) cmd_build ios; exec "$ROOT/ios/AppCLI/.build/debug/AppCLI" --fixtures-dir "$ROOT/fixtures" --serve "$port" ${forwarded[@]+"${forwarded[@]}"} ;;
+    android) cmd_build android; exec "$JAVA_HOME/bin/java" -jar "$ROOT/android/cli/build/libs/cli.jar" --fixtures-dir "$ROOT/fixtures" --serve "$port" ${forwarded[@]+"${forwarded[@]}"} ;;
+    *) die "usage: reflex serve <ios|android> [--fixture Domain.scenario]... [--port 7777]" ;;
+  esac
+}
+
+cmd_app() {
+  case "${1:-}" in
+    ios)
+      (cd "$ROOT/ios/AppMobile" && xcodegen generate --quiet &&
+        xcodebuild -project AppMobile.xcodeproj -scheme AppMobile -destination 'generic/platform=iOS Simulator' \
+          -configuration Debug build -quiet)
+      log "Built ios/AppMobile (Debug, simulator). Open ios/AppMobile/AppMobile.xcodeproj to run it." ;;
+    android)
+      [[ -n "${ANDROID_HOME:-}" ]] || die "Android SDK not recorded; run ./reflex setup --force"
+      gradle :app:assembleDebug
+      log "Built android/app/build/outputs/apk/debug/app-debug.apk" ;;
+    *) die "usage: reflex app <ios|android>" ;;
+  esac
+}
+
+cmd_ci() {
+  cmd_check
+  cmd_unit
+  cmd_test
+}
+
+command="${1:-help}"
+shift || true
+case "$command" in
+  setup) cmd_setup "$@" ;;
+  build) require_toolchain; cmd_build "$@" ;;
+  test) require_toolchain; cmd_test "$@" ;;
+  check) require_toolchain; cmd_check ;;
+  unit) require_toolchain; cmd_unit ;;
+  cli) require_toolchain; cmd_cli "$@" ;;
+  serve) require_toolchain; cmd_serve "$@" ;;
+  app) require_toolchain; cmd_app "$@" ;;
+  ci) require_toolchain; cmd_ci ;;
+  help | -h | --help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) die "unknown command '$command' (try ./reflex help)" ;;
+esac

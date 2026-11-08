@@ -1,0 +1,13 @@
+{
+  "extends": ["Sample.default"],
+  "graphql": [
+    {"operation": "SampleItems", "error": {"kind": "network"}},
+    {
+      "operation": "SampleItems",
+      "response": {"data": {"items": [
+        {"id": "1", "title": "First item", "count": 2},
+        {"id": "2", "title": "Second item", "count": 0}
+      ]}}
+    }
+  ]
+}

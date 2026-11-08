@@ -1,0 +1,14 @@
+{
+  "name": "reflex-tests",
+  "private": true,
+  "type": "module",
+  "description": "Reflex test SDK and the shared behavior tests. One test file drives both the iOS and the Android core. No runtime dependencies.",
+  "scripts": {
+    "test": "../reflex test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(./reflex build:*)",
+      "Bash(./reflex test:*)",
+      "Bash(./reflex check:*)",
+      "Bash(./reflex unit:*)",
+      "Bash(./reflex cli:*)",
+      "Bash(./reflex app:*)",
+      "Bash(./reflex ci:*)",
+      "Bash(./reflex help:*)",
+      "Bash(bun test:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/tools/toolchain-gate.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
