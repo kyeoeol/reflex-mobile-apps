@@ -22,7 +22,8 @@ Full copy-paste templates with placeholders: [templates.md](templates.md).
 
 1. **ViewModel** (both): `State` = everything visible (incl. loading/error and derived flags like `canSubmit`);
    `Action` = every user interaction; `Message` = `viewAction(Action)` + one case per async result;
-   `update(state, message)` is the only writer. Async work: Swift `Task { … self.send(message: …) }`, Kotlin
+   `update(state, message)` is the only writer (Swift stored State fields are `public fileprivate(set) var`; Kotlin
+   State is an immutable data class). Async work: Swift `Task { … self.send(message: …) }`, Kotlin
    `scope.launch { attempt { … }.fold(…) }`. Initial loading is triggered from `init` via `send(message: .load)`,
    never by a view's `onAppear` (the headless CLI has no views).
 2. **Node** (both): `name` = VM name without `ViewModel`; `state` lists every State field in the same order on both

@@ -13,9 +13,10 @@ import Observation
 public final class ThingViewModel: ViewModel {
     @MainActor @Observable public final class State {
         public let thingId: String
-        public var name = ""
-        public var isLoading = true
-        public var loadError: String?
+        // Stored fields: `public fileprivate(set) var`, so only this file (i.e. `update`) can write them.
+        public fileprivate(set) var name = ""
+        public fileprivate(set) var isLoading = true
+        public fileprivate(set) var loadError: String?
         public var canSubmit: Bool { !name.isEmpty && !isLoading }   // derived: no `if` in views or nodes
         init(thingId: String) { self.thingId = thingId }
     }

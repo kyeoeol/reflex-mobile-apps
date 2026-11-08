@@ -9,6 +9,12 @@ import Observation
 ///
 /// (A protocol rather than the base class from the original pseudo-code: in Swift, a class can't use its
 /// own nested types as generic arguments to its superclass.)
+///
+/// What the compiler enforces (Kotlin gets the same from an immutable `State` and a `protected send(message)`):
+/// - State fields are `public fileprivate(set) var`: views (another module) and other Core files can only read
+///   them; the ViewModel's own file writes them, and `./reflex check` keeps those writes inside `update`.
+/// - `send(message:)` is internal to AppCore: the app can only `send(action:)`.
+/// `update` has to be public (it's a protocol requirement); `./reflex check` rejects views that call it.
 @MainActor
 public protocol ViewModel: AnyObject {
     associatedtype State: AnyObject & Observable
@@ -20,6 +26,7 @@ public protocol ViewModel: AnyObject {
     func update(state: State, message: Message)
 }
 
-public extension ViewModel {
+extension ViewModel {
+    /// Internal on purpose: messages (service results) are the ViewModel's own business.
     func send(message: Message) { update(state: state, message: message) }
 }

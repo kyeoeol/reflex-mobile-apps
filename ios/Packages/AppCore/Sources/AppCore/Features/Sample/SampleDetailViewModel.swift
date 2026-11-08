@@ -5,13 +5,13 @@ import Observation
 public final class SampleDetailViewModel: ViewModel {
     @MainActor @Observable public final class State {
         public let itemId: String
-        public var title = ""
-        public var count = 0
-        public var isLoading = true
-        public var loadError: String?
-        public var isSaving = false
-        public var isSaved = false
-        public var saveError: String?
+        public fileprivate(set) var title = ""
+        public fileprivate(set) var count = 0
+        public fileprivate(set) var isLoading = true
+        public fileprivate(set) var loadError: String?
+        public fileprivate(set) var isSaving = false
+        public fileprivate(set) var isSaved = false
+        public fileprivate(set) var saveError: String?
 
         /// Derived in the ViewModel, so neither the View nor the node needs an `if`.
         public var canDecrement: Bool { count > 0 }

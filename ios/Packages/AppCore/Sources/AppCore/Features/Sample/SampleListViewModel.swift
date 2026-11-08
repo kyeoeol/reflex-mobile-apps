@@ -10,9 +10,9 @@ public protocol SampleNavigating: AnyObject {
 @MainActor
 public final class SampleListViewModel: ViewModel {
     @MainActor @Observable public final class State {
-        public var items: [SampleItem] = []
-        public var isLoading = false
-        public var loadError: String?
+        public fileprivate(set) var items: [SampleItem] = []
+        public fileprivate(set) var isLoading = false
+        public fileprivate(set) var loadError: String?
     }
 
     public enum Action {

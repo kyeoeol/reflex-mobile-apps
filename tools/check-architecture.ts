@@ -100,6 +100,15 @@ for (const file of files(join(SWIFT_CORE, "Features"), (p) => p.endsWith("ViewMo
       report(file, lineOf(code, m.index!), "Single writer: state changes only inside update(state:message:).");
     }
   }
+  // Stored State fields can't be written from views or other Core files (Kotlin gets this from an immutable State).
+  const stateAt = code.search(/class\s+State\b/);
+  if (stateAt >= 0) {
+    const [stateFrom, stateTo] = braceBody(code, stateAt);
+    for (const m of code.slice(stateFrom, stateTo).matchAll(/^\s*(?:public\s+|internal\s+)?var\s+\w+[^{\n]*$/gm)) {
+      report(file, lineOf(code, stateFrom + m.index!),
+        "Single writer: stored State fields are `public fileprivate(set) var` (computed fields may stay `public var`).");
+    }
+  }
   if (!/enum\s+Message\b[\s\S]*?case\s+viewAction\(Action\)/.test(code)) {
     report(file, null, "ViewModel contract: Message must have `case viewAction(Action)`.");
   }

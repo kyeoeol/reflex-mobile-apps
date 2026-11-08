@@ -122,6 +122,9 @@ Keep this list current: if you change one of these, update it in the same change
   swift-syntax dependency), Kotlin from the kotlinx `SerialDescriptor`. Payloads are validated before reaching the ViewModel.
 - Swift ViewModel is a protocol with associated types (a class can't use its own nested types as superclass
   generics). Kotlin's base class names `send(message)` `@JvmName("sendMessage")` to avoid a JVM signature clash.
+- The View contract is compiler-enforced on both platforms, not just linted: Swift stored State fields are
+  `public fileprivate(set) var` and `send(message:)` is internal to AppCore (Kotlin: immutable State,
+  `protected send(message)`). Swift `update` must stay public (protocol requirement); the lint covers it.
 - Kotlin ViewModels run on one thread (Main in the app, a single `core` thread in the CLI); `update` may launch side
   effects; use `attempt { }` (not `runCatching`) around service calls.
 - The human CLI is one TypeScript tool (`tests/sdk/cli.ts`) shared by both platforms; hosts only speak NDJSON.
