@@ -1,20 +1,20 @@
 import Foundation
 import IntrospectionKit
+import os
 #if canImport(Network)
 import Network
 #endif
 
 /// Serialized line output to a file handle (stdout by default).
-public final class LineWriter: @unchecked Sendable {
+public final class LineWriter: Sendable {
     public static let stdout = LineWriter(FileHandle.standardOutput)
-    private let handle: FileHandle
-    private let lock = NSLock()
+    private let handle: OSAllocatedUnfairLock<FileHandle>
 
-    public init(_ handle: FileHandle) { self.handle = handle }
+    public init(_ handle: FileHandle) { self.handle = OSAllocatedUnfairLock(initialState: handle) }
 
     public func write(_ line: String) {
-        lock.lock(); defer { lock.unlock() }
-        handle.write(Data((line + "\n").utf8))
+        let data = Data((line + "\n").utf8)
+        handle.withLock { $0.write(data) }
     }
 }
 

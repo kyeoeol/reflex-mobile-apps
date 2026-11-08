@@ -1,5 +1,6 @@
 import Foundation
 import ObjectiveC
+import os
 
 /// Zero network, enforced. Installed by the headless CLI only (never by the app).
 ///
@@ -7,13 +8,17 @@ import ObjectiveC
 /// which fails the behavior test even if the app recovered. `FixtureTransport` never touches the
 /// network, so tripping the guard means something bypassed the edge.
 public enum NetworkGuard {
-    nonisolated(unsafe) fileprivate static var sink: EventSink?
-    nonisolated(unsafe) private static var installed = false
+    /// The sink is read from URL loading threads, so it lives behind a lock.
+    private static let state = OSAllocatedUnfairLock<(sink: EventSink?, installed: Bool)>(initialState: (nil, false))
+
+    fileprivate static var sink: EventSink? { state.withLock { $0.sink } }
 
     public static func install(reportingTo sink: EventSink) {
-        NetworkGuard.sink = sink
-        guard !installed else { return }
-        installed = true
+        let alreadyInstalled = state.withLock { state in
+            defer { state = (sink, true) }
+            return state.installed
+        }
+        guard !alreadyInstalled else { return }
         URLProtocol.registerClass(BlockingURLProtocol.self)       // URLSession.shared and legacy APIs
         swizzle("defaultSessionConfiguration", with: #selector(URLSessionConfiguration.reflex_guardedDefault))
         swizzle("ephemeralSessionConfiguration", with: #selector(URLSessionConfiguration.reflex_guardedEphemeral))

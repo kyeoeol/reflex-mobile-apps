@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 // MARK: - Inference
 
@@ -10,12 +11,13 @@ import Foundation
 /// types (e.g. `enum Sort: String, Codable, CaseIterable, SchemaDescribable`).
 /// Do not give input fields default values: keep them required (`T`) or optional (`T?`).
 public enum SchemaInference {
-    nonisolated(unsafe) private static var cache: [ObjectIdentifier: JSONValue] = [:]
-    private static let lock = NSLock()
+    private static let cache = OSAllocatedUnfairLock(initialState: [ObjectIdentifier: JSONValue]())
 
     public static func schema<T: Decodable>(for type: T.Type) -> JSONValue {
-        lock.lock(); defer { lock.unlock() }
-        if let cached = cache[ObjectIdentifier(type)] { return cached }
+        let key = ObjectIdentifier(type)
+        if let cached = cache.withLock({ $0[key] }) { return cached }
+        // Inferred outside the lock: inference is deterministic (a race only computes the same schema twice),
+        // and a `SchemaDescribable.jsonSchema` that calls back into here must not re-enter a held lock.
         let slot = Slot()
         do {
             _ = try Recorder.value(T.self, into: slot)
@@ -23,7 +25,7 @@ public enum SchemaInference {
             fatalError("Cannot infer a JSON schema for \(T.self): \(error). Use supported field types or conform to SchemaDescribable.")
         }
         let schema = slot.build()
-        cache[ObjectIdentifier(type)] = schema
+        cache.withLock { $0[key] = schema }
         return schema
     }
 }

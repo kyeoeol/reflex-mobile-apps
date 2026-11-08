@@ -1,4 +1,5 @@
 import Foundation
+import os
 import IntrospectionKit
 
 /// Fixtures live at `fixtures/<Domain>/<scenario>.json` and are referenced as `"<Domain>.<scenario>"`.
@@ -144,21 +145,23 @@ public struct GraphQLFixture: Sendable {
 }
 
 /// Per-session matcher. Entries for an operation are consumed in declaration order; the last one repeats.
-public final class GraphQLFixtureMatcher: @unchecked Sendable {
+/// Called concurrently (transport calls run off the main actor); the consumed set is behind a lock.
+public final class GraphQLFixtureMatcher: Sendable {
     private let fixtures: [GraphQLFixture]
-    private var consumed = Set<Int>()
-    private let lock = NSLock()
+    private let consumed = OSAllocatedUnfairLock(initialState: Set<Int>())
 
     public init(_ fixtures: [GraphQLFixture]) { self.fixtures = fixtures }
 
     public func match(operation: String, variables: JSONObject) -> GraphQLFixture.Outcome? {
-        lock.lock(); defer { lock.unlock() }
         let candidates = fixtures.indices.filter { i in
             fixtures[i].operation == operation
                 && (fixtures[i].variables ?? JSONObject()).allSatisfy { variables[$0.key] == $0.value }
         }
-        guard let pick = candidates.first(where: { !consumed.contains($0) }) ?? candidates.last else { return nil }
-        if pick != candidates.last { consumed.insert(pick) }
-        return fixtures[pick].outcome
+        let pick: Int? = consumed.withLock { consumed in
+            guard let pick = candidates.first(where: { !consumed.contains($0) }) ?? candidates.last else { return nil }
+            if pick != candidates.last { consumed.insert(pick) }
+            return pick
+        }
+        return pick.map { fixtures[$0].outcome }
     }
 }

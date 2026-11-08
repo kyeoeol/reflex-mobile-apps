@@ -1,5 +1,6 @@
 import Foundation
 import IntrospectionKit
+import os
 
 /// Speaks the Reflex NDJSON protocol (version 1). Transport-agnostic: stdio for the headless CLI,
 /// a socket for DEBUG builds. Android's `ReflexHost` implements the same protocol byte for byte.
@@ -169,32 +170,37 @@ public struct SessionEvents: Sendable {
 }
 
 /// Thread-safe event fan-out to every connected client.
-public final class EventSink: @unchecked Sendable {
+public final class EventSink: Sendable {
+    private struct Shared {
+        var writers: [UUID: @Sendable (String) -> Void] = [:]
+        var activeSession: String?
+    }
+
+    private let shared = OSAllocatedUnfairLock(initialState: Shared())
+
     public init() {}
-    private let lock = NSLock()
-    private var writers: [UUID: @Sendable (String) -> Void] = [:]
-    private var _activeSession: String?
 
     /// The session that most recently received a command; network violations are attributed to it.
     public var activeSession: String? {
-        get { lock.lock(); defer { lock.unlock() }; return _activeSession }
-        set { lock.lock(); _activeSession = newValue; lock.unlock() }
+        get { shared.withLock { $0.activeSession } }
+        set { shared.withLock { $0.activeSession = newValue } }
     }
 
     @discardableResult
     public func addWriter(_ writer: @escaping @Sendable (String) -> Void) -> UUID {
         let token = UUID()
-        lock.lock(); writers[token] = writer; lock.unlock()
+        shared.withLock { $0.writers[token] = writer }
         return token
     }
 
     public func removeWriter(_ token: UUID) {
-        lock.lock(); writers[token] = nil; lock.unlock()
+        shared.withLock { $0.writers[token] = nil }
     }
 
     public func emit(_ event: JSONObject) {
         let line = JSONValue.object(event).serialized()
-        lock.lock(); let targets = Array(writers.values); lock.unlock()
+        // Writers run outside the lock, so a writer may itself add or remove writers.
+        let targets = shared.withLock { Array($0.writers.values) }
         for write in targets { write(line) }
     }
 
