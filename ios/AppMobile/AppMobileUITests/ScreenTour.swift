@@ -14,6 +14,8 @@ final class ScreenTour: XCTestCase {
         d.screenshot("01-today-empty")
 
         d.tap("today.addMedication")
+        d.wait(d.element("editor.name"))
+        d.waitGone(d.element("today.message"))
         d.screenshot("02-editor-pristine")
         d.tap("editor.save")
         d.wait(d.element("editor.error.name"))
