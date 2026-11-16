@@ -160,8 +160,28 @@ object HealthDevice {
         val button = device.wait(Until.findObject(if (allow) PERMISSION_ALLOW else PERMISSION_DENY), TIMEOUT)
             ?: device.wait(Until.findObject(By.text(Pattern.compile(if (allow) "Allow" else "Don.t allow", Pattern.CASE_INSENSITIVE))), TIMEOUT)
             ?: fail("no notification permission dialog") as Nothing
-        button.click()
+        // The permission controller animates its dialog in; a tap that lands mid-animation is dropped. Tap once the
+        // button has stopped moving, and again if the dialog is still there (the final check below stays strict).
+        var target = button
+        repeat(3) {
+            awaitStableBounds(target)
+            runCatching { target.click() }
+            if (device.wait(Until.gone(PERMISSION_ALLOW), 3_000)) return
+            target = device.findObject(if (allow) PERMISSION_ALLOW else PERMISSION_DENY) ?: return@repeat
+        }
         assertTrue("permission dialog still shown", device.wait(Until.gone(PERMISSION_ALLOW), TIMEOUT))
+    }
+
+    /** Waits (up to 2 s) until [obj]'s on-screen bounds stop changing between two reads. */
+    private fun awaitStableBounds(obj: UiObject2) {
+        var previous = runCatching { obj.visibleBounds }.getOrNull()
+        val deadline = System.currentTimeMillis() + 2_000
+        while (System.currentTimeMillis() < deadline) {
+            device.waitForIdle(250)
+            val current = runCatching { obj.visibleBounds }.getOrNull() ?: return
+            if (current == previous) return
+            previous = current
+        }
     }
 
     // Editor ----------------------------------------------------------------------------------------------------
