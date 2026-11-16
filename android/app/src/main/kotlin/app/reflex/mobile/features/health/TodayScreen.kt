@@ -39,6 +39,7 @@ import app.reflex.mobile.designsystem.InlineErrorBanner
 import app.reflex.mobile.designsystem.PillButton
 import app.reflex.mobile.designsystem.ProgressLine
 import app.reflex.mobile.designsystem.SectionHeader
+import app.reflex.mobile.designsystem.scaledIconSize
 
 @Composable
 fun TodayScreen(vm: TodayViewModel) {
@@ -50,7 +51,7 @@ fun TodayScreen(vm: TodayViewModel) {
             actionIcon = HealthIcons.Bell, actionModifier = Modifier.testTag("today.openReminders"))
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             ScreenTitle("Today")
-            Text(HealthFormat.longDate(state.date), style = HealthType.smallBody, color = HealthTheme.colors.secondary,
+            Text(HealthFormat.dayDate(state.date), style = HealthType.smallBody, color = HealthTheme.colors.secondary,
                 modifier = Modifier.testTag("today.date"))
         }
         if (state.isLoading) LoadingIndicator()
@@ -101,7 +102,8 @@ private fun TodayMessage(message: String, kind: String?, vm: TodayViewModel) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(HealthIcons.Warning, contentDescription = null, tint = HealthTheme.colors.destructive, modifier = Modifier.size(20.dp))
+                Icon(HealthIcons.Warning, contentDescription = null, tint = HealthTheme.colors.destructive,
+                    modifier = Modifier.size(scaledIconSize(20.dp)))
                 Text(message, style = HealthType.row, color = HealthTheme.colors.destructive,
                     modifier = messageTag.semantics { liveRegion = LiveRegionMode.Polite })
             }
@@ -113,7 +115,7 @@ private fun TodayMessage(message: String, kind: String?, vm: TodayViewModel) {
         "nothingToday" -> EmptyStateView(message, icon = HealthIcons.Calendar, messageModifier = messageTag)
         else -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (kind == "allDone") Icon(HealthIcons.Check, contentDescription = null, tint = HealthTheme.colors.success,
-                modifier = Modifier.size(20.dp))
+                modifier = Modifier.size(scaledIconSize(20.dp)))
             Text(message, style = HealthType.row, color = HealthTheme.colors.primary,
                 modifier = messageTag.semantics { liveRegion = LiveRegionMode.Polite })
         }

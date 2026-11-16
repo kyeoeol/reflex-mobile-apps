@@ -29,11 +29,13 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import app.reflex.mobile.designsystem.DialogShape
 import app.reflex.mobile.designsystem.HealthTheme
 import app.reflex.mobile.designsystem.HealthType
 import app.reflex.mobile.designsystem.PillButton
 import app.reflex.mobile.designsystem.PillButtonKind
 import app.reflex.mobile.designsystem.PillSelect
+import app.reflex.mobile.designsystem.dialogOutline
 import app.reflex.mobile.designsystem.exposeTestTags
 import java.time.LocalDate
 import java.time.LocalTime
@@ -51,7 +53,7 @@ fun HealthDatePickerDialog(initial: String?, onConfirm: (String) -> Unit, onDism
     val colors = HealthTheme.colors
     DatePickerDialog(
         onDismissRequest = onDismiss,
-        modifier = Modifier.exposeTestTags(),
+        modifier = Modifier.exposeTestTags().dialogOutline(),
         confirmButton = {
             PillButton("OK", {
                 state.selectedDateMillis?.let { onConfirm(HealthFormat.payloadDate(HealthFormat.pickerDate(it))) }
@@ -59,9 +61,10 @@ fun HealthDatePickerDialog(initial: String?, onConfirm: (String) -> Unit, onDism
             }, modifier = Modifier.testTag("datePicker.confirm"))
         },
         dismissButton = { PillButton("Cancel", onDismiss, modifier = Modifier.testTag("datePicker.cancel"), kind = PillButtonKind.Outline) },
-        colors = DatePickerDefaults.colors(containerColor = colors.background),
+        shape = DialogShape,
+        colors = DatePickerDefaults.colors(containerColor = colors.secondaryBackground),
     ) {
-        DatePicker(state, colors = DatePickerDefaults.colors(containerColor = colors.background,
+        DatePicker(state, colors = DatePickerDefaults.colors(containerColor = colors.secondaryBackground,
             selectedDayContainerColor = colors.primary, selectedDayContentColor = colors.background,
             todayDateBorderColor = colors.primary, todayContentColor = colors.primary))
     }
@@ -91,7 +94,8 @@ private fun TimeField(value: String, onValue: (String) -> Unit, label: String, m
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = imeAction),
             shape = RoundedCornerShape(16.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = colors.inputBackground, unfocusedContainerColor = colors.inputBackground,
+                // The fields sit on the dialog's raised surface: the canvas colour keeps them distinct from it.
+                focusedContainerColor = colors.background, unfocusedContainerColor = colors.background,
                 focusedBorderColor = colors.primary, unfocusedBorderColor = colors.controlBorder, cursorColor = colors.primary,
             ),
         )
@@ -112,7 +116,7 @@ fun TimeEntryDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
     var minute by remember { mutableStateOf("00") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        modifier = Modifier.exposeTestTags(),
+        modifier = Modifier.exposeTestTags().dialogOutline(),
         title = { Text("Add time", style = HealthType.section) },
         text = { TimeFields(hour, minute, { hour = it }, { minute = it }, tagPrefix = "editor.timePicker") },
         confirmButton = {
@@ -121,8 +125,9 @@ fun TimeEntryDialog(onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
         dismissButton = {
             PillButton("Cancel", onDismiss, modifier = Modifier.testTag("editor.timePicker.cancel"), kind = PillButtonKind.Outline)
         },
-        containerColor = HealthTheme.colors.background,
-        shape = RoundedCornerShape(24.dp),
+        containerColor = HealthTheme.colors.secondaryBackground,
+        tonalElevation = 0.dp,
+        shape = DialogShape,
     )
 }
 
@@ -136,12 +141,12 @@ fun TakeAtDialog(date: String, time: String?, onConfirm: (String) -> Unit, onDis
     var pickingDate by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        modifier = Modifier.exposeTestTags(),
+        modifier = Modifier.exposeTestTags().dialogOutline(),
         title = { Text("Change time", style = HealthType.section) },
         text = {
             Column(Modifier.testTag("takeAt.picker"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 PillSelect("Taken on", HealthFormat.date(HealthFormat.payloadDate(day)), { pickingDate = true },
-                    modifier = Modifier.testTag("takeAt.date"))
+                    modifier = Modifier.testTag("takeAt.date"), fillWidth = true)
                 TimeFields(hour, minute, { hour = it }, { minute = it }, tagPrefix = "takeAt.time")
             }
         },
@@ -152,8 +157,9 @@ fun TakeAtDialog(date: String, time: String?, onConfirm: (String) -> Unit, onDis
             }, modifier = Modifier.testTag("takeAt.save"))
         },
         dismissButton = { PillButton("Cancel", onDismiss, modifier = Modifier.testTag("takeAt.cancel"), kind = PillButtonKind.Outline) },
-        containerColor = HealthTheme.colors.background,
-        shape = RoundedCornerShape(24.dp),
+        containerColor = HealthTheme.colors.secondaryBackground,
+        tonalElevation = 0.dp,
+        shape = DialogShape,
     )
     if (pickingDate) HealthDatePickerDialog(HealthFormat.payloadDate(day), onConfirm = { picked ->
         HealthFormat.calendarDate(picked)?.let { day = it }

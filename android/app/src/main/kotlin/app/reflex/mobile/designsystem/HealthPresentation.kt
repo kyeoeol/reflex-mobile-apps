@@ -17,18 +17,33 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
 
+/**
+ * A capsule toggle. On: filled, with a leading check where there is room (the 7-across weekday circles have none),
+ * so it reads as a toggle, not a button. Disabled: no fill and a faint outline whatever its value, with the check
+ * kept when on, so a locked "on" never looks like an active control and a locked "off" stays clearly off.
+ */
 @Composable
 fun PillToggle(title: String, isOn: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier,
                enabled: Boolean = true, accessibilityTitle: String = title) {
     val colors = HealthTheme.colors
+    val iconSize = scaledIconSize(18.dp)
     Surface(modifier = modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
         .toggleable(value = isOn, enabled = enabled, role = Role.Switch, onValueChange = { onToggle() })
         .semantics { contentDescription = accessibilityTitle }, shape = CircleShape,
-        color = if (isOn) colors.primary else Color.Transparent,
+        color = if (isOn && enabled) colors.primary else Color.Transparent,
         contentColor = if (!enabled) colors.secondary else if (isOn) colors.background else colors.primary,
-        border = if (isOn) null else BorderStroke(1.dp, colors.controlBorder)) {
-        Box(Modifier.padding(horizontal = 8.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
-            Text(title, style = HealthType.meta)
+        border = when {
+            !enabled -> BorderStroke(1.dp, colors.strongBorder)
+            isOn -> null
+            else -> BorderStroke(1.dp, colors.controlBorder)
+        }) {
+        BoxWithConstraints(Modifier.padding(horizontal = 8.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
+            // Room for the check: the title plus an icon and gap, judged roughly from the label length.
+            val roomForCheck = maxWidth >= iconSize + 8.dp + scaledIconSize(10.dp) * title.length
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (isOn && roomForCheck) Icon(HealthIcons.Check, contentDescription = null, modifier = Modifier.size(iconSize))
+                Text(title, style = HealthType.meta)
+            }
         }
     }
 }
@@ -67,18 +82,24 @@ fun DoseRow(name: String, dose: String, meta: String, status: DoseStatusKind,
     Column(modifier.fillMaxWidth().padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         HairlineDivider()
         Box {
-            Column(Modifier.fillMaxWidth().heightIn(min = 48.dp).tagged(tag)
+            // The whole label opens the menu; the trailing ellipsis says so (upcoming rows included).
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).tagged(tag)
                 .clickable(role = Role.Button, onClickLabel = "Dose actions") { expanded = true }
                 .semantics(mergeDescendants = true) {}.padding(vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (meta.isNotEmpty()) MetaRow(meta)
-                Text(name, style = HealthType.row, color = HealthTheme.colors.primary)
-                if (dose.isNotEmpty()) Text(dose, style = HealthType.caption, color = HealthTheme.colors.secondary)
-                StatusChip(status, modifier = Modifier.tagged(tag?.let { "$it.status" }))
-                if (timing != null) Text(timing, style = HealthType.caption, color = HealthTheme.colors.secondary)
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (meta.isNotEmpty()) MetaRow(meta)
+                    Text(name, style = HealthType.row, color = HealthTheme.colors.primary)
+                    if (dose.isNotEmpty()) Text(dose, style = HealthType.caption, color = HealthTheme.colors.secondary)
+                    StatusChip(status, modifier = Modifier.tagged(tag?.let { "$it.status" }))
+                    if (timing != null) Text(timing, style = HealthType.caption, color = HealthTheme.colors.secondary)
+                }
+                Icon(HealthIcons.More, contentDescription = null, tint = HealthTheme.colors.secondary,
+                    modifier = Modifier.size(scaledIconSize(24.dp)))
             }
             DropdownMenu(expanded, onDismissRequest = { expanded = false }, modifier = Modifier.exposeTestTags(),
-                containerColor = HealthTheme.colors.secondaryBackground) {
+                containerColor = HealthTheme.colors.secondaryBackground,
+                border = BorderStroke(1.dp, HealthTheme.colors.strongBorder)) {
                 if (canTake) DropdownMenuItem(text = { Text("Take now") }, onClick = { expanded = false; onTake() },
                     modifier = Modifier.testTag("doseMenu.take"))
                 if (canTakeAt) DropdownMenuItem(text = { Text("Change time…") }, onClick = { expanded = false; onTakeAt() },
@@ -127,27 +148,42 @@ fun InlineErrorBanner(message: String, modifier: Modifier = Modifier) {
             .padding(16.dp).semantics { liveRegion = LiveRegionMode.Polite })
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/** Previous · date (fills the width) · next. The circles use `strongBorder` like every labeled outline. */
 @Composable
 fun HistoryDayPager(dateLabel: String, canGoNext: Boolean, onPrevious: () -> Unit, onNext: () -> Unit,
                     onSelectDate: () -> Unit, modifier: Modifier = Modifier, tagPrefix: String? = null) {
-    FlowRow(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedIconButton(onPrevious, modifier = Modifier.tagged(tagPrefix?.let { "$it.previous" }).sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
-            Icon(HealthIcons.Back, contentDescription = "Previous day")
+    val colors = HealthTheme.colors
+    val circle = Modifier.sizeIn(minWidth = scaledIconSize(48.dp), minHeight = scaledIconSize(48.dp))
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedIconButton(onPrevious, modifier = Modifier.tagged(tagPrefix?.let { "$it.previous" }).then(circle),
+            border = BorderStroke(1.dp, colors.strongBorder)) {
+            Icon(HealthIcons.Back, contentDescription = "Previous day", modifier = Modifier.size(scaledIconSize(24.dp)))
         }
-        PillSelect("History date", dateLabel, onSelectDate, modifier = Modifier.tagged(tagPrefix?.let { "$it.date" }))
-        OutlinedIconButton(onNext, enabled = canGoNext, modifier = Modifier.tagged(tagPrefix?.let { "$it.next" }).sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
-            Icon(HealthIcons.Next, contentDescription = "Next day")
+        PillSelect("History date", dateLabel, onSelectDate, modifier = Modifier.weight(1f).tagged(tagPrefix?.let { "$it.date" }),
+            fillWidth = true)
+        OutlinedIconButton(onNext, enabled = canGoNext, modifier = Modifier.tagged(tagPrefix?.let { "$it.next" }).then(circle),
+            border = BorderStroke(1.dp, if (canGoNext) colors.strongBorder else colors.border)) {
+            Icon(HealthIcons.Next, contentDescription = "Next day", modifier = Modifier.size(scaledIconSize(24.dp)))
         }
     }
 }
 
+/** A pending reminder. Its title already says what kind it is ("Time for…" / "Still due:"). */
 @Composable
-fun ReminderRow(kind: String, fireAtLabel: String, title: String, body: String, modifier: Modifier = Modifier) {
-    Column(modifier.semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        ListRow(title, fireAtLabel, body)
-        Text(kind, style = HealthType.caption, color = HealthTheme.colors.secondary)
+fun ReminderRow(fireAtLabel: String, title: String, body: String, modifier: Modifier = Modifier) {
+    ListRow(title, fireAtLabel, body, modifier = modifier)
+}
+
+/** A medication in the list: name, then "dose · kind", then the schedule. */
+@Composable
+fun MedicationRow(name: String, detail: String, schedule: String, modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
+        HairlineDivider()
+        Column(Modifier.padding(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(name, style = HealthType.row, color = HealthTheme.colors.primary)
+            if (detail.isNotEmpty()) Text(detail, style = HealthType.caption, color = HealthTheme.colors.secondary)
+            Text(schedule, style = HealthType.caption, color = HealthTheme.colors.body)
+        }
     }
 }
 

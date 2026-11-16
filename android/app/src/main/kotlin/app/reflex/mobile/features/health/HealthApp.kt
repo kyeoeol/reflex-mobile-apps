@@ -26,7 +26,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -41,6 +40,7 @@ import app.reflex.mobile.designsystem.HealthSpacing
 import app.reflex.mobile.designsystem.HealthTheme
 import app.reflex.mobile.designsystem.HealthType
 import app.reflex.mobile.designsystem.exposeTestTags
+import app.reflex.mobile.designsystem.isLargeFontScale
 
 /**
  * The navigation UI only *reflects* Core's navigators: the tab bar reads and selects [AppRoot.tabs], the screen is
@@ -89,9 +89,9 @@ private fun backTitle(routes: List<Route>): String = when (routes.getOrNull(rout
 private data class TabItem(val id: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 
 private val TAB_ITEMS = listOf(
-    TabItem(AppRoot.TAB_TODAY, "Today", HealthIcons.Calendar),
+    TabItem(AppRoot.TAB_TODAY, "Today", HealthIcons.Checklist),
     TabItem(AppRoot.TAB_MEDICATIONS, "Medications", HealthIcons.Pill),
-    TabItem(AppRoot.TAB_HISTORY, "History", HealthIcons.History),
+    TabItem(AppRoot.TAB_HISTORY, "History", HealthIcons.Calendar),
 )
 
 @Composable
@@ -145,4 +145,4 @@ fun LoadingIndicator(modifier: Modifier = Modifier) {
 
 /** At accessibility font scales the floating Add moves into the normal flow. */
 @Composable
-fun isLargeText(): Boolean = LocalDensity.current.fontScale >= 1.3f
+fun isLargeText(): Boolean = isLargeFontScale()

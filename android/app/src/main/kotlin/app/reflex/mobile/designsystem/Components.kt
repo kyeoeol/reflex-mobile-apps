@@ -2,6 +2,7 @@ package app.reflex.mobile.designsystem
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
@@ -15,10 +16,27 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 // All values and callbacks come from the host. No feature, Core, or ViewModel dependencies.
+
+/** An icon size that grows with the font scale like text of the same size (no 16 dp icon beside doubled text). */
+@Composable
+fun scaledIconSize(size: Dp): Dp = with(LocalDensity.current) { size.value.sp.toDp() }
+
+/** Accessibility font scales: layouts stack, floating controls move into the flow. */
+@Composable
+fun isLargeFontScale(): Boolean = LocalDensity.current.fontScale >= 1.3f
+
+/** Dialog surface: the raised panel colour and a 1 dp outline, so a dialog reads as a surface on the dark canvas too. */
+val DialogShape = RoundedCornerShape(24.dp)
+
+@Composable
+fun Modifier.dialogOutline(): Modifier = border(1.dp, HealthTheme.colors.strongBorder, DialogShape)
 enum class PillButtonKind { Primary, Outline, Destructive }
 enum class DoseStatusKind(val label: String, val icon: ImageVector) {
     Upcoming("Upcoming", HealthIcons.Clock), Due("Due", HealthIcons.Dot), Taken("Taken", HealthIcons.Check),
@@ -45,7 +63,7 @@ fun PillButton(title: String, onClick: () -> Unit, modifier: Modifier = Modifier
         colors = ButtonDefaults.buttonColors(containerColor = background, contentColor = foreground,
             disabledContainerColor = background.copy(alpha = 0.38f), disabledContentColor = colors.secondary),
         elevation = null, contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)) {
-        if (icon != null) { Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp)) }
+        if (icon != null) { Icon(icon, contentDescription = null, modifier = Modifier.size(scaledIconSize(20.dp))); Spacer(Modifier.width(8.dp)) }
         Text(title, style = HealthType.meta)
     }
 }
@@ -99,7 +117,7 @@ fun StatusChip(kind: DoseStatusKind, modifier: Modifier = Modifier) {
     Row(modifier.clip(CircleShape).background(background).padding(horizontal = 10.dp, vertical = 6.dp)
         .semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Icon(kind.icon, contentDescription = null, tint = foreground, modifier = Modifier.size(16.dp))
+        Icon(kind.icon, contentDescription = null, tint = foreground, modifier = Modifier.size(scaledIconSize(16.dp)))
         Text(kind.label, style = HealthType.meta, color = foreground)
     }
 }
@@ -116,16 +134,17 @@ fun ProgressLine(fraction: Float, label: String, modifier: Modifier = Modifier) 
 
 @Composable
 fun EmptyStateView(message: String?, modifier: Modifier = Modifier, title: String? = null,
-                   icon: ImageVector = HealthIcons.Plus, actionTitle: String? = null, onAction: () -> Unit = {},
+                   icon: ImageVector? = HealthIcons.Plus, actionTitle: String? = null, onAction: () -> Unit = {},
                    messageModifier: Modifier = Modifier, actionModifier: Modifier = Modifier,
                    messageColor: Color = HealthTheme.colors.secondary) {
     Column(modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(HealthTheme.colors.secondaryBackground).padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Icon(icon, contentDescription = null, tint = HealthTheme.colors.secondary, modifier = Modifier.size(28.dp))
+        if (icon != null) Icon(icon, contentDescription = null, tint = HealthTheme.colors.secondary,
+            modifier = Modifier.size(scaledIconSize(28.dp)))
         if (title != null) Text(title, style = HealthType.section, color = HealthTheme.colors.primary,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            textAlign = TextAlign.Center)
         if (message != null) Text(message, style = HealthType.smallBody, color = messageColor,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            textAlign = TextAlign.Center,
             modifier = messageModifier.semantics { liveRegion = LiveRegionMode.Polite })
         if (actionTitle != null) PillButton(actionTitle, onAction, modifier = actionModifier)
     }
@@ -152,29 +171,34 @@ fun Banner(title: String, modifier: Modifier = Modifier, message: String? = null
 }
 
 @Composable
-fun PillSelect(label: String, title: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    OutlinedButton(onClick, modifier = modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+fun PillSelect(label: String, title: String, onClick: () -> Unit, modifier: Modifier = Modifier, fillWidth: Boolean = false) {
+    OutlinedButton(onClick, modifier = modifier.then(if (fillWidth) Modifier.fillMaxWidth() else Modifier)
+        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
         .semantics { contentDescription = label; stateDescription = title }, shape = CircleShape,
         border = BorderStroke(1.dp, HealthTheme.colors.controlBorder),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = HealthTheme.colors.primary)) {
-        Text(title, style = HealthType.meta, modifier = Modifier.weight(1f, fill = false))
+        // Full width: the value on the leading edge, the chevron on the trailing edge.
+        Text(title, style = HealthType.meta, modifier = Modifier.weight(1f, fill = fillWidth))
         Spacer(Modifier.width(8.dp))
-        Icon(HealthIcons.Down, contentDescription = null, modifier = Modifier.size(20.dp))
+        Icon(HealthIcons.Down, contentDescription = null, modifier = Modifier.size(scaledIconSize(20.dp)))
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/** Equal-width segments across the given width; stacked full-width at accessibility text sizes. */
 @Composable
 fun PillSegmentedControl(labels: List<String>, selectedIndex: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier,
                          itemModifier: (Int) -> Modifier = { Modifier }) {
-    FlowRow(modifier.clip(RoundedCornerShape(28.dp)).background(HealthTheme.colors.secondaryBackground).padding(4.dp)
-        .selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        labels.forEachIndexed { index, label ->
-            PillButton(label, { onSelect(index) }, modifier = itemModifier(index).semantics { selected = index == selectedIndex },
-                kind = if (index == selectedIndex) PillButtonKind.Primary else PillButtonKind.Outline)
-        }
+    val container = modifier.clip(RoundedCornerShape(28.dp)).background(HealthTheme.colors.secondaryBackground).padding(4.dp)
+        .selectableGroup()
+    val item = @Composable { index: Int, fill: Modifier ->
+        PillButton(labels[index], { onSelect(index) }, modifier = fill.then(itemModifier(index)).semantics { selected = index == selectedIndex },
+            kind = if (index == selectedIndex) PillButtonKind.Primary else PillButtonKind.Outline)
+    }
+    if (isLargeFontScale()) Column(container, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        labels.indices.forEach { item(it, Modifier.fillMaxWidth()) }
+    } else Row(container, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        labels.indices.forEach { item(it, Modifier.weight(1f)) }
     }
 }
 
@@ -207,10 +231,11 @@ fun HealthTextField(label: String, value: String, onValueChange: (String) -> Uni
 @Composable
 fun HealthTopBar(title: String, modifier: Modifier = Modifier, actionTitle: String? = null, onAction: () -> Unit = {},
                  backTitle: String? = null, onBack: () -> Unit = {}, actionIcon: ImageVector? = null,
+                 backIcon: ImageVector? = HealthIcons.Back,
                  actionModifier: Modifier = Modifier, backModifier: Modifier = Modifier) {
     FlowRow(modifier.fillMaxWidth().padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (backTitle != null) PillButton(backTitle, onBack, modifier = backModifier, kind = PillButtonKind.Outline, icon = HealthIcons.Back)
+        if (backTitle != null) PillButton(backTitle, onBack, modifier = backModifier, kind = PillButtonKind.Outline, icon = backIcon)
         Text(title, style = HealthType.meta, color = HealthTheme.colors.primary,
             modifier = Modifier.align(Alignment.CenterVertically).weight(1f))
         if (actionTitle != null) PillButton(actionTitle, onAction, modifier = actionModifier, kind = PillButtonKind.Outline, icon = actionIcon)
@@ -222,12 +247,12 @@ fun HealthConfirmationDialog(isPresented: Boolean, title: String, message: Strin
                              onConfirm: () -> Unit, onDismiss: () -> Unit, onDismissRequest: () -> Unit = onDismiss,
                              confirmModifier: Modifier = Modifier, dismissModifier: Modifier = Modifier) {
     // A dialog is its own window: its test tags need their own resource-id opt-in.
-    if (isPresented) AlertDialog(onDismissRequest = onDismissRequest, modifier = Modifier.exposeTestTags(),
+    if (isPresented) AlertDialog(onDismissRequest = onDismissRequest, modifier = Modifier.exposeTestTags().dialogOutline(),
         title = { Text(title, style = HealthType.section) }, text = { Text(message, style = HealthType.body) },
         confirmButton = { PillButton(confirmTitle, onConfirm, modifier = confirmModifier, kind = PillButtonKind.Destructive) },
         dismissButton = { PillButton("Cancel", onDismiss, modifier = dismissModifier, kind = PillButtonKind.Outline) },
-        containerColor = HealthTheme.colors.background, titleContentColor = HealthTheme.colors.primary,
-        textContentColor = HealthTheme.colors.body, tonalElevation = 0.dp, shape = RoundedCornerShape(24.dp))
+        containerColor = HealthTheme.colors.secondaryBackground, titleContentColor = HealthTheme.colors.primary,
+        textContentColor = HealthTheme.colors.body, tonalElevation = 0.dp, shape = DialogShape)
 }
 
 /** Makes `Modifier.testTag`s visible to UI Automator as resource ids (set at the root and in every dialog/popup). */

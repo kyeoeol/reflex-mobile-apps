@@ -44,7 +44,8 @@ fun MedicationDetailScreen(vm: MedicationDetailViewModel, backTitle: String, onB
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionHeader("Schedule")
             Text(state.schedule, style = HealthType.body, color = colors.primary, modifier = Modifier.testTag("detail.schedule"))
-            MetaRow(HealthFormat.date(state.startDate), state.endDate?.let(HealthFormat::date) ?: "No end date")
+            MetaRow(listOfNotNull("Since ${HealthFormat.date(state.startDate)}",
+                state.endDate?.let { "Until ${HealthFormat.date(it)}" }).joinToString(" · "))
             if (state.notes.isNotEmpty()) Text(state.notes, style = HealthType.smallBody, color = colors.body)
         }
         Column(Modifier.testTag("detail.adherence").semantics(mergeDescendants = true) {},

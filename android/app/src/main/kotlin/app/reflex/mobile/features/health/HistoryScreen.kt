@@ -15,7 +15,6 @@ import app.reflex.core.features.health.DoseItem
 import app.reflex.core.features.health.HistoryViewModel
 import app.reflex.core.features.health.HistoryViewModel.Action
 import app.reflex.mobile.designsystem.EmptyStateView
-import app.reflex.mobile.designsystem.HealthIcons
 import app.reflex.mobile.designsystem.HealthTheme
 import app.reflex.mobile.designsystem.HealthTopBar
 import app.reflex.mobile.designsystem.HealthType
@@ -40,7 +39,7 @@ fun HistoryScreen(vm: HistoryViewModel) {
         }
         state.doseError?.let { InlineErrorBanner(it, Modifier.testTag("history.doseError")) }
         state.message?.let {
-            EmptyStateView(it, icon = HealthIcons.History, messageModifier = Modifier.testTag("history.message"))
+            EmptyStateView(it, icon = null, messageModifier = Modifier.testTag("history.message"))
         }
         if (state.doses.isNotEmpty()) Column {
             for (dose in state.doses) {
