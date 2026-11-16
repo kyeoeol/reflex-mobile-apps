@@ -142,4 +142,8 @@ adb shell "for i in \$(seq 1 50); do am kill $PACKAGE; pidof $PACKAGE >/dev/null
   die "couldn't stop the app's process before the live run"
 adb shell am start -W -n "$ACTIVITY" >/dev/null # returns once Today is drawn; the socket server starts with the app
 adb forward tcp:$PORT tcp:$PORT >/dev/null
+# Wait (bounded: ~20 s) until the DEBUG server answers through the forward with its `ready` event.
+for _ in $(seq 1 10); do
+  nc -w 2 127.0.0.1 $PORT </dev/null 2>/dev/null | head -1 | grep -q '"ready"' && break
+done
 REFLEX_PLATFORMS=android "$ROOT/reflex" test --live
