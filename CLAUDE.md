@@ -116,7 +116,9 @@ Keep this list current: if you change one of these, update it in the same change
 - Protocol: NDJSON v1 as implemented by `ReflexHost.swift` / `ReflexHost.kt` (commands `session.create`, `ls`, `do`,
   `tree`, `session.close`; codes `ACTION_NOT_AVAILABLE`, `INVALID_PAYLOAD`, `UNKNOWN_SESSION`, `FIXTURE_NOT_FOUND`,
   `INVALID_FIXTURE`, `BAD_REQUEST`, `UNSUPPORTED`, `INTERNAL`; events `ready`, `network_violation`,
-  `fixture_miss`, `log`). One host process per platform per run; one session (fresh Core) per test.
+  `fixture_miss`, `log`; headless-only `device.set`, `device.event`). One host process per platform per run; one
+  session (fresh Core) per test. A host handles requests one at a time, in arrival order (a `device.event` reply
+  waits until Core has finished handling the event).
 - JSON output is byte-identical across platforms: compact, integral numbers without `.0`, keys in declaration order.
   Swift uses an ordered `JSONObject` and its own parser for this.
 - Input schemas are inferred, never hand-written: Swift from `Decodable` (a recording decoder, so no macro and no
