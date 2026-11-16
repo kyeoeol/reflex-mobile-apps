@@ -226,10 +226,11 @@ class HealthStore(
         loadFailed = loaded.isFailure
         isLoading = false
         if (!loadFailed) dataListeners.forEach { it(data) }
+        publish()
+        // Queued work (links, responses) sees the loaded data in [current].
         val queued = afterLoad.toList()
         afterLoad.clear()
         queued.forEach { it(!loadFailed) }
-        publish()
         reconcileLater()
     }
 
