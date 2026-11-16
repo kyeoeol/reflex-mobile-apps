@@ -33,12 +33,12 @@ struct MedicationDetailView: View {
                 }
                 VStack(alignment: .leading, spacing: HealthSpacing.xxs) {
                     Text("Adherence").font(HealthTypography.meta).foregroundStyle(HealthColors.secondary)
-                    Text(state.adherenceLabel).font(HealthTypography.display).foregroundStyle(HealthColors.primary)
-                        .accessibilityIdentifier("detail.adherence")
-                    if let caption = state.adherenceCaption {
-                        Text(caption).font(HealthTypography.caption).foregroundStyle(HealthColors.secondary)
+                    if let label = state.adherenceLabel {
+                        Text(label).font(HealthTypography.display).foregroundStyle(HealthColors.primary)
                     }
+                    Text(state.adherenceCaption).font(HealthTypography.caption).foregroundStyle(HealthColors.secondary)
                 }
+                .accessibilityElement(children: .combine).accessibilityIdentifier("detail.adherence")
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: HealthSpacing.xs) { lifecycleButtons(state) }
                     VStack(alignment: .leading, spacing: HealthSpacing.xs) { lifecycleButtons(state) }

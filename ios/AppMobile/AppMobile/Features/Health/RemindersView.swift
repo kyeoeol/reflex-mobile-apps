@@ -14,8 +14,10 @@ struct RemindersView: View {
                 VStack(alignment: .leading, spacing: HealthSpacing.sm) {
                     Text(state.statusLabel).font(HealthTypography.row).foregroundStyle(HealthColors.primary)
                         .accessibilityIdentifier("reminders.status")
-                    Button("Turn on reminders") { viewModel.send(action: .turnOnReminders) }
-                        .buttonStyle(PillButtonStyle(kind: .outline)).accessibilityIdentifier("reminders.turnOn")
+                    if let action = state.actionLabel {
+                        Button(action) { viewModel.send(action: .turnOnReminders) }
+                            .buttonStyle(PillButtonStyle(kind: .outline)).accessibilityIdentifier("reminders.turnOn")
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading).padding(HealthSpacing.md)
                 .background(HealthColors.secondaryBackground, in: RoundedRectangle(cornerRadius: HealthSpacing.panelRadius))
