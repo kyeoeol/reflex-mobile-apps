@@ -160,6 +160,8 @@ struct EmptyStateView: View {
     var title: String? = nil
     var symbol: String = "pills"
     var actionTitle: String? = nil
+    var messageIdentifier: String? = nil
+    var actionIdentifier: String? = nil
     var onAction: () -> Void = {}
 
     var body: some View {
@@ -167,9 +169,14 @@ struct EmptyStateView: View {
             Image(systemName: symbol).font(.system(size: 28, weight: .ultraLight)).accessibilityHidden(true)
             if let title { Text(title).font(HealthTypography.section) }
             Text(message).font(HealthTypography.smallBody).foregroundStyle(HealthColors.secondary)
-            if let actionTitle { Button(actionTitle, action: onAction).buttonStyle(PillButtonStyle()) }
+                .accessibilityIdentifier(messageIdentifier ?? "")
+            if let actionTitle {
+                Button(actionTitle, action: onAction).buttonStyle(PillButtonStyle())
+                    .accessibilityIdentifier(actionIdentifier ?? "")
+            }
         }.multilineTextAlignment(.center).foregroundStyle(HealthColors.primary)
-            .frame(maxWidth: .infinity).padding(32).background(HealthColors.secondaryBackground)
+            .frame(maxWidth: .infinity).padding(32)
+            .background(HealthColors.secondaryBackground, in: RoundedRectangle(cornerRadius: HealthSpacing.panelRadius))
     }
 }
 
@@ -188,12 +195,17 @@ struct Banner: View {
     let title: String
     var message: String? = nil
     var actionTitle: String? = nil
+    /// The title's identifier; the action is `<identifier>.action`.
+    var identifier: String? = nil
     var onAction: () -> Void = {}
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(HealthTypography.row)
+            Text(title).font(HealthTypography.row).accessibilityIdentifier(identifier ?? "")
             if let message { Text(message).font(HealthTypography.smallBody).foregroundStyle(HealthColors.secondary) }
-            if let actionTitle { Button(actionTitle, action: onAction).buttonStyle(PillButtonStyle(kind: .outline)) }
+            if let actionTitle {
+                Button(actionTitle, action: onAction).buttonStyle(PillButtonStyle(kind: .outline))
+                    .accessibilityIdentifier(identifier.map { "\($0).action" } ?? "")
+            }
         }.foregroundStyle(HealthColors.primary).frame(maxWidth: .infinity, alignment: .leading)
             .padding(16).background(HealthColors.secondaryBackground, in: RoundedRectangle(cornerRadius: 16))
     }
@@ -214,6 +226,7 @@ struct PillSelect: View {
 struct PillSegmentedControl: View {
     let labels: [String]
     let selectedIndex: Int
+    var identifiers: [String] = []
     let onSelect: (Int) -> Void
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -226,28 +239,55 @@ struct PillSegmentedControl: View {
             Button { onSelect(index) } label: { Text(labels[index]).frame(maxWidth: .infinity) }
                 .buttonStyle(PillButtonStyle(kind: selectedIndex == index ? .primary : .outline))
                 .accessibilityAddTraits(selectedIndex == index ? [.isSelected] : [])
+                .accessibilityIdentifier(index < identifiers.count ? identifiers[index] : labels[index])
         }
     }
 }
 
+/// A labeled field over a local edit buffer: typing updates the buffer and reports each change through
+/// `onValueChange`; the buffer re-syncs from `value` only when the screen's state differs from the last value
+/// reported (so no keystroke is dropped and input-method composition such as Hangul stays intact).
 struct HealthTextField: View {
     let label: String
     let value: String
     var placeholder: String = ""
     var error: String? = nil
     var multiline: Bool = false
+    var identifier: String? = nil
+    var errorIdentifier: String? = nil
     let onValueChange: (String) -> Void
+    @State private var text = ""
+    @State private var lastReported: String?
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(label).font(HealthTypography.meta).foregroundStyle(HealthColors.primary)
-            TextField(placeholder, text: Binding(get: { value }, set: { onValueChange($0) }), axis: multiline ? .vertical : .horizontal)
+            Text(label).font(HealthTypography.meta).foregroundStyle(HealthColors.primary).accessibilityHidden(true)
+            TextField(placeholder, text: $text, axis: multiline ? .vertical : .horizontal)
                 .font(HealthTypography.input).foregroundStyle(HealthColors.primary)
+                .lineLimit(multiline ? 3... : 1...)
                 .padding(.horizontal, 16).padding(.vertical, 14)
                 .frame(minHeight: HealthSpacing.controlHeight)
                 .background(HealthColors.inputBackground, in: RoundedRectangle(cornerRadius: multiline ? 16 : 28))
                 .overlay(RoundedRectangle(cornerRadius: multiline ? 16 : 28).strokeBorder(error == nil ? HealthColors.controlBorder : HealthColors.destructive, lineWidth: 1))
-                .accessibilityLabel(label).accessibilityValue([value, error].compactMap { $0 }.joined(separator: ", "))
-            if let error { Text(error).font(HealthTypography.caption).foregroundStyle(HealthColors.destructive) }
+                .accessibilityLabel(label).accessibilityValue([text, error].compactMap { $0 }.joined(separator: ", "))
+                .accessibilityIdentifier(identifier ?? label)
+            if let error {
+                Text(error).font(HealthTypography.caption).foregroundStyle(HealthColors.destructive)
+                    .accessibilityIdentifier(errorIdentifier ?? "\(identifier ?? label).error")
+            }
+        }
+        .onAppear {
+            if lastReported == nil { text = value; lastReported = value }
+        }
+        .onChange(of: text) { _, newText in
+            guard newText != lastReported else { return }
+            lastReported = newText
+            onValueChange(newText)
+        }
+        .onChange(of: value) { _, newValue in
+            guard newValue != lastReported else { return }
+            lastReported = newValue
+            text = newValue
         }
         .onChange(of: error) { _, newError in
             if let newError { AccessibilityNotification.Announcement(newError).post() }
@@ -262,6 +302,7 @@ struct HealthTopBar: View {
     var backTitle: String? = nil
     var onBack: () -> Void = {}
     var actionSymbol: String? = nil
+    var actionIdentifier: String? = nil
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 12) { content }
@@ -278,13 +319,14 @@ struct HealthTopBar: View {
             if let actionTitle {
                 Button(action: onAction) {
                     if let actionSymbol { Label(actionTitle, systemImage: actionSymbol) } else { Text(actionTitle) }
-                }.buttonStyle(PillButtonStyle(kind: .outline))
+                }.buttonStyle(PillButtonStyle(kind: .outline)).accessibilityIdentifier(actionIdentifier ?? actionTitle)
             }
         }
     }
 }
 
-/// A native confirmation dialog; visibility belongs to the host.
+/// A native confirmation alert; visibility belongs to the host. The presentation binding ignores writes: the
+/// buttons send the outcome themselves (a setter that sent "cancel" could run before, and undo, the confirm).
 struct HealthConfirmationDialog: ViewModifier {
     let isPresented: Bool
     let title: String
@@ -293,9 +335,9 @@ struct HealthConfirmationDialog: ViewModifier {
     let onConfirm: () -> Void
     let onDismiss: () -> Void
     func body(content: Content) -> some View {
-        content.confirmationDialog(title, isPresented: Binding(get: { isPresented }, set: { if !$0 { onDismiss() } }), titleVisibility: .visible) {
-            Button(confirmTitle, role: .destructive, action: onConfirm)
-            Button("Cancel", role: .cancel, action: onDismiss)
+        content.alert(title, isPresented: Binding(get: { isPresented }, set: { _ in })) {
+            Button(confirmTitle, role: .destructive, action: onConfirm).accessibilityIdentifier("deleteDialog.confirm")
+            Button("Cancel", role: .cancel, action: onDismiss).accessibilityIdentifier("deleteDialog.cancel")
         } message: { Text(message) }
     }
 }
