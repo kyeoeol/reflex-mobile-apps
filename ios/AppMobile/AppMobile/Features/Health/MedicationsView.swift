@@ -6,6 +6,7 @@ import SwiftUI
 struct MedicationsView: View {
     let viewModel: MedicationsViewModel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .title) private var symbolSize = 28.0
 
     var body: some View {
         let state = viewModel.state
@@ -17,7 +18,7 @@ struct MedicationsView: View {
                 if state.isLoading { LoadingIndicator() }
                 if state.isEmpty {
                     VStack(spacing: HealthSpacing.md) {
-                        Image(systemName: "pills").font(.system(size: 28, weight: .ultraLight)).accessibilityHidden(true)
+                        Image(systemName: "pill").font(.system(size: symbolSize, weight: .ultraLight)).accessibilityHidden(true)
                         addButton
                     }
                     .frame(maxWidth: .infinity).padding(HealthSpacing.xl)

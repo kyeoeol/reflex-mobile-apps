@@ -31,14 +31,11 @@ struct HistoryView: View {
                     }
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(state.doses, id: \.id) { dose in
-                            HealthDoseRow(prefix: "history", dose: dose, meta: dose.time ?? dose.takenAt ?? "", onCommand: handle)
+                            HealthDoseRow(prefix: "history", dose: dose, meta: dose.time ?? "", onCommand: handle)
                         }
                     }
                     if let message = state.message {
-                        Text(message).font(HealthTypography.smallBody).foregroundStyle(HealthColors.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading).padding(HealthSpacing.md)
-                            .background(HealthColors.secondaryBackground, in: RoundedRectangle(cornerRadius: HealthSpacing.panelRadius))
-                            .accessibilityIdentifier("history.message")
+                        EmptyStateView(message: message, symbol: nil, messageIdentifier: "history.message")
                     }
                 }
             }
@@ -52,7 +49,7 @@ struct HistoryView: View {
         }
         .sheet(isPresented: $isPickingDate) {
             DatePickerSheet(title: "Choose a day", start: HealthFormat.date(state.date) ?? HealthFormat.defaultTime,
-                            identifier: "history.datePicker") { viewModel.send(action: .selectDate($0)) }
+                            identifier: "history.datePicker", detents: [.medium, .large]) { viewModel.send(action: .selectDate($0)) }
         }
     }
 

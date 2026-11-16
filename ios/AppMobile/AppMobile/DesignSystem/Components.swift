@@ -155,18 +155,25 @@ struct ProgressLine: View {
     }
 }
 
+/// A centered message panel. `symbol: nil` shows no icon. At accessibility text sizes the icon is left out and the
+/// padding tightens, so the message and its action stay in view instead of starting under the tab bar.
 struct EmptyStateView: View {
     let message: String
     var title: String? = nil
-    var symbol: String = "pills"
+    var symbol: String? = "pill"
     var actionTitle: String? = nil
     var messageIdentifier: String? = nil
     var actionIdentifier: String? = nil
     var onAction: () -> Void = {}
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .title) private var symbolSize = 28.0
 
     var body: some View {
+        let isLargeText = dynamicTypeSize.isAccessibilitySize
         VStack(spacing: 16) {
-            Image(systemName: symbol).font(.system(size: 28, weight: .ultraLight)).accessibilityHidden(true)
+            if let symbol, !isLargeText {
+                Image(systemName: symbol).font(.system(size: symbolSize, weight: .ultraLight)).accessibilityHidden(true)
+            }
             if let title { Text(title).font(HealthTypography.section) }
             Text(message).font(HealthTypography.smallBody).foregroundStyle(HealthColors.secondary)
                 .accessibilityIdentifier(messageIdentifier ?? "")
@@ -175,7 +182,7 @@ struct EmptyStateView: View {
                     .accessibilityIdentifier(actionIdentifier ?? "")
             }
         }.multilineTextAlignment(.center).foregroundStyle(HealthColors.primary)
-            .frame(maxWidth: .infinity).padding(32)
+            .frame(maxWidth: .infinity).padding(isLargeText ? HealthSpacing.md : HealthSpacing.xl)
             .background(HealthColors.secondaryBackground, in: RoundedRectangle(cornerRadius: HealthSpacing.panelRadius))
     }
 }

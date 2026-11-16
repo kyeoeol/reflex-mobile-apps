@@ -24,15 +24,17 @@ struct MedicationDetailView: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: HealthSpacing.xs) {
-                    Text(state.schedule).font(HealthTypography.row).foregroundStyle(HealthColors.primary)
+                    SectionHeader(title: "Schedule")
+                    Text(state.schedule).font(HealthTypography.body).foregroundStyle(HealthColors.primary)
                         .accessibilityIdentifier("detail.schedule")
-                    Text(dateRange(state)).font(HealthTypography.caption).foregroundStyle(HealthColors.secondary)
+                    Text(dateRange(state)).font(HealthTypography.meta).tracking(0.52).foregroundStyle(HealthColors.secondary)
                     if !state.notes.isEmpty {
                         Text(state.notes).font(HealthTypography.smallBody).foregroundStyle(HealthColors.body)
                     }
                 }
-                VStack(alignment: .leading, spacing: HealthSpacing.xxs) {
-                    Text("Adherence").font(HealthTypography.meta).foregroundStyle(HealthColors.secondary)
+                VStack(alignment: .leading, spacing: HealthSpacing.xs) {
+                    SectionHeader(title: "Adherence")
+                    // The figure only when there is one; the caption ("No data yet" without data) always.
                     if let label = state.adherenceLabel {
                         Text(label).font(HealthTypography.display).foregroundStyle(HealthColors.primary)
                     }
@@ -58,11 +60,13 @@ struct MedicationDetailView: View {
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, HealthSpacing.screen).padding(.bottom, HealthSpacing.xl)
         }
         .background(HealthColors.background)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .opaqueNavigationBar()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Edit") { viewModel.send(action: .edit) }.accessibilityIdentifier("detail.edit")
@@ -88,15 +92,16 @@ struct MedicationDetailView: View {
             .buttonStyle(PillButtonStyle(kind: .destructive)).accessibilityIdentifier("detail.delete")
     }
 
+    /// "Since Nov 16, 2026", plus " · Until Dec 1, 2026" when there is an end date.
     private func dateRange(_ state: MedicationDetailViewModel.State) -> String {
-        let start = HealthFormat.mediumDate(state.startDate)
-        guard let end = state.endDate else { return "Since \(start)" }
-        return "\(start) – \(HealthFormat.mediumDate(end))"
+        let since = "Since \(HealthFormat.mediumDate(state.startDate))"
+        guard let end = state.endDate else { return since }
+        return "\(since) · Until \(HealthFormat.mediumDate(end))"
     }
 
-    /// "Nov 16, 2026 · 08:00"; as-needed entries show their taken time.
+    /// "Nov 16, 2026 · 08:00 · Taken at 08:10"; as-needed entries have no scheduled time.
     private func historyMeta(_ dose: DoseItem) -> String {
-        let time = dose.time ?? dose.takenAt
-        return [HealthFormat.mediumDate(dose.date), time].compactMap { $0 }.joined(separator: " · ")
+        [HealthFormat.mediumDate(dose.date), dose.time, dose.takenAt.map { "Taken at \($0)" }]
+            .compactMap { $0 }.joined(separator: " · ")
     }
 }

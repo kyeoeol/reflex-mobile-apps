@@ -1,25 +1,26 @@
 import Foundation
 
 /// Presentation formatting only. State carries dates as `yyyy-MM-dd` and times as 24-hour `HH:mm` strings; views
-/// show times verbatim and format only dates with the device locale. Pickers work on a fixed UTC Gregorian
-/// calendar, so a `yyyy-MM-dd` value is a calendar date (never shifted by the device zone) and payloads are written
-/// back with `en_US_POSIX` digits. Views have no clock: every picker starts from a state value or a fixed default.
+/// show times verbatim and format only dates with the device locale. Pickers work in the device time zone (so the
+/// wheel's "Today" is the user's today); a `yyyy-MM-dd` value is parsed, shown and written back in that same zone,
+/// so it never shifts, and payloads are written with `en_US_POSIX` Gregorian digits. Views have no clock: every
+/// picker starts from a state value or a fixed default.
 enum HealthFormat {
-    static let pickerTimeZone = TimeZone(identifier: "UTC")!
+    static var pickerTimeZone: TimeZone { .current }
 
-    /// The calendar pickers and payloads use.
-    static let pickerCalendar: Calendar = {
+    /// The calendar pickers and payloads use: Gregorian, `en_US_POSIX`, in the device time zone.
+    static var pickerCalendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = pickerTimeZone
         calendar.locale = Locale(identifier: "en_US_POSIX")
         return calendar
-    }()
+    }
 
     /// A 24-hour locale for time pickers (times are always `HH:mm`, never AM/PM).
     static let pickerLocale = Locale(identifier: "en_GB")
 
     /// The Add time picker's starting value (`08:00`).
-    static let defaultTime = pickerCalendar.date(from: DateComponents(year: 2000, month: 1, day: 1, hour: 8, minute: 0))!
+    static var defaultTime: Date { pickerCalendar.date(from: DateComponents(year: 2000, month: 1, day: 1, hour: 8, minute: 0))! }
 
     // MARK: Parsing state values
 

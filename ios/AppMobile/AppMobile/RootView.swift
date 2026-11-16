@@ -34,7 +34,7 @@ private extension AppTab {
     var symbol: String {
         switch self {
         case .today: "checklist"
-        case .medications: "pills"
+        case .medications: "pill"
         case .history: "calendar"
         }
     }

@@ -9,6 +9,7 @@ struct MedicationEditorView: View {
     let onCancel: () -> Void
     @State private var isPickingTime = false
     @State private var pickingDate: DateField?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     enum DateField: String, Identifiable {
         case start, end
@@ -49,12 +50,12 @@ struct MedicationEditorView: View {
                         .accessibilityIdentifier("editor.startDate")
                 }
                 field("End date") {
-                    PillSelect(label: "End date", title: state.endDate.map(HealthFormat.mediumDate) ?? "No end date") {
-                        pickingDate = .end
-                    }.accessibilityIdentifier("editor.endDate")
-                    if state.endDate != nil {
-                        Button("Clear end date") { viewModel.send(action: .setEndDate(nil)) }
-                            .buttonStyle(PillButtonStyle(kind: .outline)).accessibilityIdentifier("editor.endDate.clear")
+                    // Full width; Clear sits beside it, or below it at accessibility text sizes.
+                    if state.endDate != nil && !dynamicTypeSize.isAccessibilitySize {
+                        HStack(spacing: HealthSpacing.xs) { endDatePill(state); clearEndDate }
+                    } else {
+                        endDatePill(state)
+                        if state.endDate != nil { clearEndDate }
                     }
                     errorText(state.datesError, id: "editor.error.dates")
                 }
@@ -81,6 +82,7 @@ struct MedicationEditorView: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
+        .opaqueNavigationBar()
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel", action: onCancel).accessibilityIdentifier("editor.cancel")
@@ -106,19 +108,21 @@ struct MedicationEditorView: View {
     @ViewBuilder
     private func times(_ state: MedicationEditorViewModel.State) -> some View {
         field("Times") {
+            // One outlined pill per time: the time, then its remove button.
             ForEach(state.times, id: \.self) { time in
-                HStack {
+                HStack(spacing: HealthSpacing.xxs) {
                     Text(time).font(HealthTypography.row).foregroundStyle(HealthColors.primary)
                         .accessibilityIdentifier("editor.time.\(time)")
-                    Spacer(minLength: HealthSpacing.sm)
                     Button { viewModel.send(action: .removeTime(time)) } label: {
-                        Image(systemName: "xmark").accessibilityHidden(true)
+                        Image(systemName: "xmark").font(HealthTypography.row).foregroundStyle(HealthColors.primary)
+                            .frame(minWidth: HealthSpacing.controlHeight, minHeight: HealthSpacing.controlHeight)
+                            .contentShape(Rectangle()).accessibilityHidden(true)
                     }
-                    .buttonStyle(PillButtonStyle(kind: .outline, horizontalPadding: 0))
+                    .buttonStyle(.plain)
                     .accessibilityLabel("Remove \(time)").accessibilityIdentifier("editor.time.\(time).remove")
                 }
-                .padding(.leading, HealthSpacing.md).padding(.trailing, HealthSpacing.xxs).padding(.vertical, HealthSpacing.xxs)
-                .background(HealthColors.inputBackground, in: Capsule())
+                .padding(.leading, HealthSpacing.md)
+                .overlay(Capsule().strokeBorder(HealthColors.strongBorder, lineWidth: 1))
             }
             Button { isPickingTime = true } label: { Label("Add time", systemImage: "plus") }
                 .buttonStyle(PillButtonStyle(kind: .outline)).disabled(!state.canAddTime)
@@ -126,6 +130,18 @@ struct MedicationEditorView: View {
             errorText(state.timesError, id: "editor.error.times")
             errorText(state.timeError, id: "editor.error.time")
         }
+    }
+
+    private func endDatePill(_ state: MedicationEditorViewModel.State) -> some View {
+        PillSelect(label: "End date", title: state.endDate.map(HealthFormat.mediumDate) ?? "No end date") {
+            pickingDate = .end
+        }.accessibilityIdentifier("editor.endDate")
+    }
+
+    private var clearEndDate: some View {
+        Button("Clear") { viewModel.send(action: .setEndDate(nil)) }
+            .buttonStyle(PillButtonStyle(kind: .outline)).accessibilityLabel("Clear end date")
+            .accessibilityIdentifier("editor.endDate.clear")
     }
 
     private func field<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
@@ -178,5 +194,6 @@ struct TimePickerSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .presentationBackground(HealthColors.background)
     }
 }
