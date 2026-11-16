@@ -6,7 +6,9 @@
 #   ./reflex e2e android
 #
 # Environment: ROOT, JAVA_HOME, ANDROID_HOME (set by ./reflex); REFLEX_E2E_SCREENSHOTS=<dir> to keep the review
-# screenshots E9 takes (never commit them); REFLEX_E2E_KEEP_EMULATOR=1 to leave an emulator this script started running.
+# screenshots E9 takes (never commit them); REFLEX_E2E_KEEP_EMULATOR=1 to leave an emulator this script started running;
+# REFLEX_LIVE_PORT=<port> for the host side of the forward (default 7777; the iOS simulator's DEBUG app also binds
+# 127.0.0.1:7777 on the host, so pick another port when both platforms run at once).
 set -euo pipefail
 
 ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -16,7 +18,8 @@ PACKAGE="com.beta.health"
 ACTIVITY="$PACKAGE/app.reflex.mobile.MainActivity"
 TEST_PACKAGE="app.reflex.e2e"
 RUNNER="$TEST_PACKAGE/androidx.test.runner.AndroidJUnitRunner"
-PORT=7777
+PORT="${REFLEX_LIVE_PORT:-7777}" # host side; the app always listens on the device's 127.0.0.1:7777
+DEVICE_PORT=7777
 SCREENS_ON_DEVICE="/data/local/tmp/health-beta-screens"
 
 log() { printf '\033[1m==>\033[0m %s\n' "$*" >&2; }
@@ -38,7 +41,7 @@ if ! "$EMULATOR" -list-avds 2>/dev/null | grep -qx "$AVD"; then
   echo no | JAVA_HOME="$JAVA_HOME" "$AVDMANAGER" create avd -n "$AVD" -k "$IMAGE" -d pixel_9a >/dev/null
 fi
 if lsof -nP -iTCP:$PORT -sTCP:LISTEN >/dev/null 2>&1; then
-  die "port $PORT is already in use on this machine (another reflex serve or forward?); free it and retry"
+  die "port $PORT is already in use on this machine (another reflex serve or forward, or the iOS DEBUG app?); free it or set REFLEX_LIVE_PORT"
 fi
 
 # Device -------------------------------------------------------------------------------------------------------------
@@ -141,9 +144,10 @@ adb shell input keyevent KEYCODE_HOME
 adb shell "for i in \$(seq 1 50); do am kill $PACKAGE; pidof $PACKAGE >/dev/null || exit 0; sleep 0.2; done; exit 1" ||
   die "couldn't stop the app's process before the live run"
 adb shell am start -W -n "$ACTIVITY" >/dev/null # returns once Today is drawn; the socket server starts with the app
-adb forward tcp:$PORT tcp:$PORT >/dev/null
+lsof -nP -iTCP:$PORT -sTCP:LISTEN >/dev/null 2>&1 && die "port $PORT was taken during the run; set REFLEX_LIVE_PORT"
+adb forward tcp:$PORT tcp:$DEVICE_PORT >/dev/null
 # Wait (bounded: ~20 s) until the DEBUG server answers through the forward with its `ready` event.
 for _ in $(seq 1 10); do
   nc -w 2 127.0.0.1 $PORT </dev/null 2>/dev/null | head -1 | grep -q '"ready"' && break
 done
-REFLEX_PLATFORMS=android "$ROOT/reflex" test --live
+REFLEX_LIVE_PORT=$PORT REFLEX_PLATFORMS=android "$ROOT/reflex" test --live
