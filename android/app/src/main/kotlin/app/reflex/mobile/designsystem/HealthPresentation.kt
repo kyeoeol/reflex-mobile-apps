@@ -78,7 +78,7 @@ fun DoseRow(name: String, dose: String, meta: String, status: DoseStatusKind,
                 if (timing != null) Text(timing, style = HealthType.caption, color = HealthTheme.colors.secondary)
             }
             DropdownMenu(expanded, onDismissRequest = { expanded = false }, modifier = Modifier.exposeTestTags(),
-                containerColor = HealthTheme.colors.background) {
+                containerColor = HealthTheme.colors.secondaryBackground) {
                 if (canTake) DropdownMenuItem(text = { Text("Take now") }, onClick = { expanded = false; onTake() },
                     modifier = Modifier.testTag("doseMenu.take"))
                 if (canTakeAt) DropdownMenuItem(text = { Text("Change time…") }, onClick = { expanded = false; onTakeAt() },
