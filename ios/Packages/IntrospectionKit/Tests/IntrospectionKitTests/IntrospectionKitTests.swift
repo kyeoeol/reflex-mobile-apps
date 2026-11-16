@@ -102,3 +102,79 @@ import Testing
         #expect(matcher.match(operation: "Other", variables: ["id": "2"]) == nil)
     }
 }
+
+@MainActor @Suite struct HostDeviceCommandTests {
+    final class Root: IntrospectionProviding {
+        var introspectionNode: any IntrospectionNode { ResolutionTests.Leaf() }
+    }
+
+    /// Records what reaches it; `event` suspends a few times first, so later requests would overtake it if the
+    /// host didn't keep them in order.
+    final class Device: DeviceControl {
+        var log: [String] = []
+
+        func set(_ values: JSONObject) async throws {
+            guard values["now"]?.stringValue != nil else { throw HostError("BAD_REQUEST", "bad now") }
+            log.append("set \(JSONValue.object(values).serialized())")
+        }
+
+        func event(type: String, payload: JSONObject) async throws {
+            for _ in 0..<5 { await Task.yield() }
+            guard type == "ping" else { throw HostError("BAD_REQUEST", "unknown event") }
+            log.append("event \(type) \(JSONValue.object(payload).serialized())")
+        }
+    }
+
+    /// Sends every line, then collects one reply per non-blank line, in the order they were written.
+    func run(_ host: ReflexHost, _ lines: [String]) async -> [String] {
+        let (replies, continuation) = AsyncStream<String>.makeStream()
+        for line in lines { host.handle(line) { continuation.yield($0) } }
+        await host.drain()
+        continuation.finish()
+        var collected: [String] = []
+        for await reply in replies { collected.append(reply) }
+        return collected
+    }
+
+    @Test func routesDeviceCommandsToTheSessionInOrder() async {
+        let device = Device()
+        let host = ReflexHost(platform: "test", mode: .fixtures(root: URL(fileURLWithPath: "/nonexistent")) { _ in
+            HeadlessSession(root: Root(), device: device)
+        })
+        let replies = await run(host, [
+            #"{"id":1,"cmd":"session.create","fixtures":[]}"#,
+            #"{"id":2,"session":"s1","cmd":"device.event","type":"ping","payload":{"n":1}}"#,
+            #"{"id":3,"session":"s1","cmd":"device.set","values":{"now":"2026-11-16T10:00:00"}}"#,
+            #"{"id":4,"session":"s1","cmd":"device.set","values":{"now":1}}"#,
+            #"{"id":5,"session":"s1","cmd":"device.set"}"#,
+            #"{"id":6,"session":"s1","cmd":"device.event","type":"pong"}"#,
+            #"{"id":7,"session":"s1","cmd":"device.event","payload":{}}"#,
+            #"{"id":8,"session":"s9","cmd":"device.set","values":{}}"#,
+        ])
+        #expect(replies == [
+            #"{"id":1,"ok":true,"session":"s1"}"#,
+            #"{"id":2,"ok":true}"#,
+            #"{"id":3,"ok":true}"#,
+            #"{"id":4,"ok":false,"error":{"code":"BAD_REQUEST","message":"bad now"}}"#,
+            #"{"id":5,"ok":false,"error":{"code":"BAD_REQUEST","message":"'device.set' needs a 'values' object"}}"#,
+            #"{"id":6,"ok":false,"error":{"code":"BAD_REQUEST","message":"unknown event"}}"#,
+            #"{"id":7,"ok":false,"error":{"code":"BAD_REQUEST","message":"'device.event' needs a 'type'"}}"#,
+            #"{"id":8,"ok":false,"error":{"code":"UNKNOWN_SESSION","message":"No session 's9'"}}"#,
+        ])
+        #expect(device.log == [#"event ping {"n":1}"#, #"set {"now":"2026-11-16T10:00:00"}"#])
+    }
+
+    @Test func liveSessionsDontSupportDeviceCommands() async {
+        let host = ReflexHost(platform: "test", mode: .live(root: Root()))
+        let replies = await run(host, [
+            #"{"id":1,"cmd":"device.set","values":{"now":"2026-11-16T10:00:00"}}"#,
+            #"{"id":2,"cmd":"device.event","type":"openURL","payload":{"url":"x://today"}}"#,
+            #"{"id":3,"cmd":"ls"}"#,
+        ])
+        #expect(replies.prefix(2) == [
+            #"{"id":1,"ok":false,"error":{"code":"UNSUPPORTED","message":"'device.set' is only supported in headless sessions"}}"#,
+            #"{"id":2,"ok":false,"error":{"code":"UNSUPPORTED","message":"'device.event' is only supported in headless sessions"}}"#,
+        ])
+        #expect(replies[2].hasPrefix(#"{"id":3,"ok":true,"node":"#))
+    }
+}
