@@ -52,7 +52,10 @@ func makeSession(_ context: SessionContext) throws -> any IntrospectionProviding
         storage: InMemoryStorage(fixtures.storage.reduce(into: [:]) { $0[$1.key] = $1.value.stringValue }),
         transport: FixtureTransport(matcher: GraphQLFixtureMatcher(fixtures.graphql), events: context.events),
         device: FixtureDevice(fixtures.device),
-        flags: FixtureFlags(fixtures.flags)
+        flags: FixtureFlags(fixtures.flags),
+        clock: try FixtureClock(fixtures.device),
+        reminders: try FixtureReminderScheduler(fixtures.device),
+        health: FixtureHealthRepository(fixtures.storage)
     )
     if let deeplink = context.deeplink {
         guard let url = URL(string: deeplink), core.app.open(url) else {

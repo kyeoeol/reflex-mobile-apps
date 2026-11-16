@@ -8,6 +8,6 @@ extension AppRoot: IntrospectionProviding {
         let name = "App"
         var state: JSONObject { [:] }
         var actions: [IntrospectionAction] { [] }
-        var child: (any IntrospectionNode)? { root.navigator.introspectionNode }
+        var child: (any IntrospectionNode)? { root.tabs.introspectionNode }
     }
 }

@@ -3,13 +3,21 @@ import Foundation
 /// Every screen the app can show. Each case wraps that screen's ViewModel.
 /// Hashable by ViewModel identity so SwiftUI's `NavigationStack(path:)` can reflect the navigator.
 public enum Route: Routable, Hashable {
-    case sampleList(SampleListViewModel)
-    case sampleDetail(SampleDetailViewModel)
+    case today(TodayViewModel)
+    case medications(MedicationsViewModel)
+    case history(HistoryViewModel)
+    case reminders(RemindersViewModel)
+    case medicationEditor(MedicationEditorViewModel)
+    case medicationDetail(MedicationDetailViewModel)
 
     public var viewModel: AnyObject {
         switch self {
-        case .sampleList(let viewModel): viewModel
-        case .sampleDetail(let viewModel): viewModel
+        case .today(let viewModel): viewModel
+        case .medications(let viewModel): viewModel
+        case .history(let viewModel): viewModel
+        case .reminders(let viewModel): viewModel
+        case .medicationEditor(let viewModel): viewModel
+        case .medicationDetail(let viewModel): viewModel
         }
     }
 
@@ -20,46 +28,90 @@ public enum Route: Routable, Hashable {
     public func hash(into hasher: inout Hasher) { hasher.combine(ObjectIdentifier(viewModel)) }
 }
 
-/// Root of the object tree: owns services, session and persistence, and the navigator.
+/// The tab bar's tabs, in order.
+public enum AppTab: String, CaseIterable, Sendable {
+    case today, medications, history
+}
+
+/// Root of the object tree: owns services, the Health store and the navigators.
 ///
-///     AppRoot ─ StackNavigator(routes) ─ <top route's ViewModel>
+///     AppRoot ─ TabNavigator(today | medications | history) ─ StackNavigator(routes) ─ <top route's ViewModel>
 ///
-/// It is also the factory for new screens: ViewModels ask for navigation through small `*Navigating`
-/// protocols (held weakly), and AppRoot builds the next ViewModel with its services and pushes it.
+/// It is also the factory for new screens: ViewModels ask for navigation through `HealthNavigating` (held weakly),
+/// and AppRoot builds the next ViewModel with its services and pushes it on the current tab's stack.
 @MainActor
 public final class AppRoot {
-    public let navigator = StackNavigator<Route>()
+    public let tabs = TabNavigator<AppTab, Route>(tabs: AppTab.allCases, selected: .today)
     let services: Services
+    let store: HealthStore
 
     init(services: Services) {
         self.services = services
-        navigator.reset([.sampleList(makeSampleList())])
+        self.store = HealthStore(repository: services.healthRepository, scheduler: services.reminderScheduler,
+                                 clock: services.clock)
+        for tab in AppTab.allCases { resetTab(tab) }
+        store.start()
     }
 
-    /// Deep links change navigator state, so they behave identically in the CLI.
-    /// Paths are scheme-agnostic: `<any-scheme>://sample/<id>` opens that item's detail.
+    /// Deep links change navigator state (and, for notification actions, the data), so they behave identically in
+    /// the CLI. Scheme-agnostic:
+    /// - `<s>://today`
+    /// - `<s>://medication/<id>`
+    /// - `<s>://reminder/<slot>[/taken|/skipped|/snooze]` (notification taps and actions; applied once loaded)
     @discardableResult
     public func open(_ url: URL) -> Bool {
         let parts = [url.host].compactMap { $0 } + url.pathComponents.filter { $0 != "/" }
-        switch parts.first {
-        case "sample" where parts.count == 2:
-            navigator.reset([.sampleList(makeSampleList())])
-            showSampleDetail(id: parts[1])
+        switch (parts.first, parts.count) {
+        case ("today", 1):
+            showTab(.today)
+            return true
+        case ("medication", 2):
+            showTab(.medications)
+            showMedicationDetail(id: parts[1])
+            return true
+        case ("reminder", 2), ("reminder", 3):
+            let response = parts.count == 3 ? ReminderResponse(rawValue: parts[2]) : .open
+            guard let response, response != .open || parts.count == 2, HealthRules.parseSlot(parts[1]) != nil else { return false }
+            showTab(.today)
+            store.respond(response, slot: parts[1])
             return true
         default:
             return false
         }
     }
 
-    // MARK: - Factories
+    /// Selects `tab` and resets its stack to its root screen.
+    private func showTab(_ tab: AppTab) {
+        tabs.select(tab)
+        resetTab(tab)
+    }
 
-    private func makeSampleList() -> SampleListViewModel {
-        SampleListViewModel(service: GraphQLSampleService(client: services.client), navigation: self)
+    private func resetTab(_ tab: AppTab) {
+        let root: Route = switch tab {
+        case .today: .today(TodayViewModel(store: store, navigation: self))
+        case .medications: .medications(MedicationsViewModel(store: store, navigation: self))
+        case .history: .history(HistoryViewModel(store: store))
+        }
+        tabs.stack(tab).reset([root])
     }
 }
 
-extension AppRoot: SampleNavigating {
-    public func showSampleDetail(id: String) {
-        navigator.push(.sampleDetail(SampleDetailViewModel(itemId: id, service: GraphQLSampleService(client: services.client))))
+extension AppRoot: HealthNavigating {
+    public func showReminders() {
+        tabs.selectedStack.push(.reminders(RemindersViewModel(store: store)))
+    }
+
+    public func showMedicationEditor(medicationId: String?) {
+        tabs.selectedStack.push(.medicationEditor(MedicationEditorViewModel(medicationId: medicationId, store: store, navigation: self)))
+    }
+
+    public func showMedicationDetail(id: String) {
+        tabs.selectedStack.push(.medicationDetail(MedicationDetailViewModel(id: id, store: store, navigation: self)))
+    }
+
+    public func close(_ screen: AnyObject) {
+        for tab in tabs.tabs where tabs.stack(tab).top?.viewModel === screen {
+            tabs.stack(tab).goBack()
+        }
     }
 }
