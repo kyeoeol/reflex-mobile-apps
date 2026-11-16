@@ -24,14 +24,20 @@ public final class MedicationEditorViewModel: ViewModel {
         public fileprivate(set) var weekdaysError: String?
         public fileprivate(set) var datesError: String?
         public fileprivate(set) var timeError: String?
+        public fileprivate(set) var canAddTime = true
+        /// Only a new medication can be made as-needed (or not).
+        public fileprivate(set) var canChangeAsNeeded: Bool
+        /// No validation error (shown or not yet).
+        public fileprivate(set) var isValid = false
+        /// The Save button is enabled: not saving and the stored data loaded without error. It stays enabled
+        /// while the form is invalid, so the first attempt can reveal the errors.
         public fileprivate(set) var canSave = false
         public fileprivate(set) var isSaving = false
-
-        public var canAddTime: Bool { times.count < MedicationEditorViewModel.maxTimes }
 
         init(medicationId: String?) {
             self.mode = medicationId == nil ? "add" : "edit"
             self.medicationId = medicationId
+            self.canChangeAsNeeded = medicationId == nil
         }
     }
 
@@ -74,7 +80,7 @@ public final class MedicationEditorViewModel: ViewModel {
     public func send(action: Action) { send(message: .viewAction(action)) }
 
     public func update(state: State, message: Message) {
-        /// Fills the form once: add-mode defaults, or the medication with the times/weekdays in force today.
+        /// Fills the form once: add-mode defaults, or the medication with the latest version's times/weekdays.
         func fillDraft() {
             let today = snapshot.today
             guard !hasDraft else { return }
@@ -89,18 +95,20 @@ public final class MedicationEditorViewModel: ViewModel {
             state.dose = medication.dose
             state.notes = medication.notes
             state.asNeeded = medication.asNeeded
-            state.times = medication.times(on: today)
-            state.weekdays = medication.schedule(on: today).map { _ in medication.weekdays(on: today) } ?? [1, 2, 3, 4, 5, 6, 7]
+            state.times = medication.latestTimes
+            state.weekdays = medication.latestSchedule == nil ? [1, 2, 3, 4, 5, 6, 7] : medication.latestWeekdays
             state.startDate = medication.startDate
             state.endDate = medication.endDate
             hasDraft = true
         }
 
         func validate() {
-            let name = state.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let name = HealthRules.trimmed(state.name)
+            let key = HealthRules.nameKey(name)
+            let today = snapshot.today
             let isDuplicate = snapshot.data.medications.contains { other in
-                other.id != state.medicationId && !other.isArchivedNow
-                    && other.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == name.lowercased()
+                other.id != state.medicationId && other.status(today: today) == .active
+                    && HealthRules.nameKey(HealthRules.trimmed(other.name)) == key
             }
             let nameError: String? = name.isEmpty ? "Name is required"
                 : isDuplicate ? "A medication with this name already exists" : nil
@@ -113,8 +121,9 @@ public final class MedicationEditorViewModel: ViewModel {
                 state.weekdaysError = weekdaysError
                 state.datesError = datesError
             }
-            let isValid = nameError == nil && timesError == nil && weekdaysError == nil && datesError == nil
-            state.canSave = isValid && !state.isSaving && snapshot.phase == .loaded
+            state.isValid = nameError == nil && timesError == nil && weekdaysError == nil && datesError == nil
+            state.canAddTime = state.times.count < Self.maxTimes
+            state.canSave = !state.isSaving && snapshot.phase == .loaded
         }
 
         switch message {
@@ -126,8 +135,10 @@ public final class MedicationEditorViewModel: ViewModel {
             state.dose = dose
         case .viewAction(.setNotes(let notes)):
             state.notes = notes
-        case .viewAction(.setAsNeeded(let asNeeded)):
+        case .viewAction(.setAsNeeded(let asNeeded)) where state.canChangeAsNeeded:
             state.asNeeded = asNeeded
+        case .viewAction(.setAsNeeded):
+            break   // edit mode: whether it is as-needed never changes
         case .viewAction(.addTime(let time)) where state.canAddTime:
             if !HealthTime.isTime(time) {
                 state.timeError = "Enter a time as HH:mm"
@@ -154,12 +165,12 @@ public final class MedicationEditorViewModel: ViewModel {
             state.endDate = nil
         case .viewAction(.setEndDate(let text?)):
             if let date = LocalDate(text) { state.endDate = date.text }
-        case .viewAction(.save):
+        case .viewAction(.save) where state.canSave:
             hasAttemptedSave = true
             validate()
-            guard state.canSave, let kind = MedicationKind(rawValue: state.kind) else { break }
+            guard state.isValid, let kind = MedicationKind(rawValue: state.kind) else { break }
             let draft = MedicationDraft(
-                id: state.medicationId, name: state.name.trimmingCharacters(in: .whitespacesAndNewlines), kind: kind,
+                id: state.medicationId, name: HealthRules.trimmed(state.name), kind: kind,
                 dose: state.dose, notes: state.notes, asNeeded: state.asNeeded,
                 times: state.asNeeded ? [] : state.times, weekdays: state.asNeeded ? [] : state.weekdays,
                 startDate: state.startDate, endDate: state.endDate)
@@ -172,13 +183,11 @@ public final class MedicationEditorViewModel: ViewModel {
             navigation?.close(self)
             // The first scheduled medication is when Health Beta asks for notification permission.
             if !draft.times.isEmpty, permission == .notDetermined { store.requestPermission() }
+        case .viewAction(.save):
+            break   // the stored data didn't load (or a save is under way): nothing can be saved
         case .storeChanged(let snapshot):
             self.snapshot = snapshot
             fillDraft()
-        }
-        guard !state.isSaving else {
-            state.canSave = false
-            return
         }
         validate()
     }

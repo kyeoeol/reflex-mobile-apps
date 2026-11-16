@@ -14,7 +14,8 @@ public final class MedicationsViewModel: ViewModel {
 
     @MainActor @Observable public final class State {
         public fileprivate(set) var isLoading = true
-        public fileprivate(set) var isEmpty = true
+        /// Not loading and no medication at all (also after a failed load).
+        public fileprivate(set) var isEmpty = false
         public fileprivate(set) var active: [Row] = []
         public fileprivate(set) var ended: [Row] = []
         public fileprivate(set) var archived: [Row] = []
@@ -58,11 +59,11 @@ public final class MedicationsViewModel: ViewModel {
             func rows(_ status: MedicationStatus) -> [Row] {
                 medications.filter { $0.status(today: today) == status }.map { medication in
                     Row(id: medication.id, name: medication.name, kind: medication.kind.rawValue, dose: medication.dose,
-                        schedule: medication.scheduleSummary(today: today))
+                        schedule: medication.scheduleSummary)
                 }
             }
             state.isLoading = snapshot.phase == .loading
-            state.isEmpty = medications.isEmpty
+            state.isEmpty = snapshot.phase != .loading && medications.isEmpty
             state.active = rows(.active)
             state.ended = rows(.ended)
             state.archived = rows(.archived)

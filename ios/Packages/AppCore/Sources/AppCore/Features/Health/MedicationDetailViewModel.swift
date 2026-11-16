@@ -7,7 +7,7 @@ public final class MedicationDetailViewModel: ViewModel {
     @MainActor @Observable public final class State {
         public let id: String
         public fileprivate(set) var name = ""
-        public fileprivate(set) var kind = MedicationKind.medication.rawValue
+        public fileprivate(set) var kind = ""
         public fileprivate(set) var dose = ""
         public fileprivate(set) var notes = ""
         public fileprivate(set) var schedule = ""
@@ -15,6 +15,8 @@ public final class MedicationDetailViewModel: ViewModel {
         public fileprivate(set) var endDate: String?
         public fileprivate(set) var status = MedicationStatus.active.rawValue
         public fileprivate(set) var adherenceLabel = "No data yet"
+        /// `"<taken> of <n> doses taken in the last 30 days"`; nil with "No data yet".
+        public fileprivate(set) var adherenceCaption: String?
         public fileprivate(set) var takenCount = 0
         public fileprivate(set) var skippedCount = 0
         public fileprivate(set) var missedCount = 0
@@ -46,11 +48,13 @@ public final class MedicationDetailViewModel: ViewModel {
     public let state: State
     private let store: HealthStore
     private weak var navigation: (any HealthNavigating)?
+    private var snapshot: HealthSnapshot
 
     init(id: String, store: HealthStore, navigation: any HealthNavigating) {
         self.state = State(id: id)
         self.store = store
         self.navigation = navigation
+        self.snapshot = store.snapshot
         store.subscribe(self) { [weak self] in self?.send(message: .storeChanged($0)) }
         send(message: .storeChanged(store.snapshot))
     }
@@ -59,8 +63,10 @@ public final class MedicationDetailViewModel: ViewModel {
 
     public func update(state: State, message: Message) {
         switch message {
-        case .viewAction(.edit):
+        case .viewAction(.edit) where snapshot.data.medication(state.id) != nil:
             navigation?.showMedicationEditor(medicationId: state.id)
+        case .viewAction(.edit):
+            break   // unknown medication: no-op
         case .viewAction(.archive):
             store.archive(medicationId: state.id)
         case .viewAction(.restore):
@@ -70,12 +76,13 @@ public final class MedicationDetailViewModel: ViewModel {
         case .viewAction(.cancelDelete):
             state.isConfirmingDelete = false
         case .viewAction(.confirmDelete) where state.isConfirmingDelete:
+            // The screen then disappears with the medication (AppRoot removes screens of deleted medications).
             state.isConfirmingDelete = false
             store.delete(medicationId: state.id)
-            navigation?.close(self)
         case .viewAction(.confirmDelete):
             break   // nothing happens without asking first
         case .storeChanged(let snapshot):
+            self.snapshot = snapshot
             let (data, now, today) = (snapshot.data, snapshot.now, snapshot.today)
             let medication = data.medication(state.id)
             let window = (0..<Self.windowDays).map { today.adding(days: -$0) }
@@ -93,25 +100,26 @@ public final class MedicationDetailViewModel: ViewModel {
             let status = medication?.status(today: today) ?? .active
 
             state.name = medication?.name ?? ""
-            state.kind = (medication?.kind ?? .medication).rawValue
+            state.kind = medication?.kind.rawValue ?? ""
             state.dose = medication?.dose ?? ""
             state.notes = medication?.notes ?? ""
-            state.schedule = medication?.scheduleSummary(today: today) ?? ""
+            state.schedule = medication?.scheduleSummary ?? ""
             state.startDate = medication?.startDate ?? ""
             state.endDate = medication?.endDate
             state.status = status.rawValue
             // round-half-up(100 × taken / resolved), in integers.
             state.adherenceLabel = resolved == 0 ? "No data yet" : "\((200 * counts.taken + resolved) / (2 * resolved))%"
+            state.adherenceCaption = resolved == 0 ? nil : "\(counts.taken) of \(resolved) doses taken in the last 30 days"
             state.takenCount = counts.taken
             state.skippedCount = counts.skipped
             state.missedCount = counts.missed
             state.history = (doses.filter { $0.status != DoseStatus.upcoming.rawValue } + asNeeded).sorted { a, b in
                 if a.date != b.date { return a.date > b.date }
                 if a.sortTime != b.sortTime { return a.sortTime > b.sortTime }
-                return a.id < b.id
+                return HealthRules.precedes(a.id, b.id)
             }
-            state.canArchive = status != .archived
-            state.canRestore = status == .archived
+            state.canArchive = medication != nil && status != .archived
+            state.canRestore = medication != nil && status == .archived
         }
     }
 }

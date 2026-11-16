@@ -15,12 +15,15 @@ extension TodayViewModel: IntrospectionProviding {
                 "takenCount": .number(viewModel.state.takenCount),
                 "scheduledCount": .number(viewModel.state.scheduledCount),
                 "message": JSONValue(viewModel.state.message),
+                "messageKind": JSONValue(viewModel.state.messageKind),
                 "reminderBanner": JSONValue(viewModel.state.reminderBanner),
+                "reminderBannerAction": JSONValue(viewModel.state.reminderBannerAction),
                 "groups": .array(viewModel.state.groups.map { group in
                     [
                         "key": .string(group.key),
                         "date": .string(group.date),
                         "time": .string(group.time),
+                        "label": .string(group.label),
                         "doses": .array(group.doses.map(\.introspectionJSON)),
                     ]
                 }),
@@ -32,6 +35,7 @@ extension TodayViewModel: IntrospectionProviding {
                         "takenToday": .number(item.takenToday),
                         "lastTakenAt": JSONValue(item.lastTakenAt),
                         "summary": .string(item.summary),
+                        "canUndo": .bool(item.canUndo),
                     ]
                 }),
                 "doseError": JSONValue(viewModel.state.doseError),
@@ -56,6 +60,7 @@ extension TodayViewModel: IntrospectionProviding {
                 IntrospectionAction(title: "OpenReminders") { viewModel.send(action: .openReminders) },
                 IntrospectionAction(title: "AddMedication") { viewModel.send(action: .addMedication) },
                 IntrospectionAction(title: "OpenMedication", input: IdInput.self) { viewModel.send(action: .openMedication(id: $0.id)) },
+                IntrospectionAction(title: "Retry") { viewModel.send(action: .retry) },
             ]
         }
 

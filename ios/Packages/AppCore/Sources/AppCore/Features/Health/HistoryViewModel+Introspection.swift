@@ -9,6 +9,7 @@ extension HistoryViewModel: IntrospectionProviding {
 
         var state: JSONObject {
             [
+                "isLoading": .bool(viewModel.state.isLoading),
                 "date": .string(viewModel.state.date),
                 "canGoNext": .bool(viewModel.state.canGoNext),
                 "summaryLabel": JSONValue(viewModel.state.summaryLabel),

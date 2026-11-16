@@ -5,6 +5,7 @@ import Observation
 @MainActor
 public final class HistoryViewModel: ViewModel {
     @MainActor @Observable public final class State {
+        public fileprivate(set) var isLoading = true
         public fileprivate(set) var date = ""
         public fileprivate(set) var canGoNext = false
         public fileprivate(set) var summaryLabel: String?
@@ -49,13 +50,14 @@ public final class HistoryViewModel: ViewModel {
             let (data, now, today) = (snapshot.data, snapshot.now, snapshot.today)
             let occurrences = data.occurrences(on: date, zone: snapshot.zone)
             let doses = occurrences.map { $0.item(now: now) } + data.asNeededLogs(on: date).map(DoseItem.init(asNeeded:))
+            state.isLoading = snapshot.phase == .loading
             state.date = date.text
             state.canGoNext = date < today
             state.summaryLabel = HealthRules.progressLabel(occurrences)
             state.doses = doses.sorted { a, b in
                 a.sortTime != b.sortTime ? a.sortTime < b.sortTime : HealthRules.byName(a.name, a.id, b.name, b.id)
             }
-            state.message = doses.isEmpty ? "Nothing recorded on this day" : nil
+            state.message = snapshot.phase != .loading && doses.isEmpty ? "Nothing recorded on this day" : nil
         }
         func apply(_ outcome: DoseOutcome) {
             switch outcome {

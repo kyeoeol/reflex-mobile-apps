@@ -44,20 +44,24 @@ public final class AppRoot {
     public let tabs = TabNavigator<AppTab, Route>(tabs: AppTab.allCases, selected: .today)
     let services: Services
     let store: HealthStore
+    /// Bumped by every link and notification response, so a medication link waiting for the data to load is
+    /// dropped when the user has gone somewhere else in the meantime.
+    private var navigationRequest = 0
 
     init(services: Services) {
         self.services = services
         self.store = HealthStore(repository: services.healthRepository, scheduler: services.reminderScheduler,
                                  clock: services.clock)
         for tab in AppTab.allCases { resetTab(tab) }
+        store.subscribe(self) { [weak self] in self?.removeStaleRoutes($0) }
         store.start()
     }
 
-    /// Deep links change navigator state (and, for notification actions, the data), so they behave identically in
-    /// the CLI. Scheme-agnostic:
-    /// - `<s>://today`
-    /// - `<s>://medication/<id>`
-    /// - `<s>://reminder/<slot>[/taken|/skipped|/snooze]` (notification taps and actions; applied once loaded)
+    /// Deep links only navigate (any app can open a URL, so a link never changes data). Scheme-agnostic:
+    /// - `<s>://today`: select `today`, reset it to `[Today]`
+    /// - `<s>://medication/<id>`: select `medications`, reset it to `[Medications]`; once the data has loaded,
+    ///   push that medication's detail if it exists
+    /// - `<s>://reminder/<slot>[/…]`: select `today`, reset it to `[Today]`; any further path is ignored
     @discardableResult
     public func open(_ url: URL) -> Bool {
         let parts = [url.host].compactMap { $0 } + url.pathComponents.filter { $0 != "/" }
@@ -67,21 +71,38 @@ public final class AppRoot {
             return true
         case ("medication", 2):
             showTab(.medications)
-            showMedicationDetail(id: parts[1])
+            let (request, id) = (navigationRequest, parts[1])
+            store.whenLoaded { [weak self] data in
+                guard let self, self.navigationRequest == request, data.medication(id) != nil else { return }
+                self.tabs.stack(.medications).push(self.medicationDetail(id: id))
+            }
             return true
-        case ("reminder", 2), ("reminder", 3):
-            let response = parts.count == 3 ? ReminderResponse(rawValue: parts[2]) : .open
-            guard let response, response != .open || parts.count == 2, HealthRules.parseSlot(parts[1]) != nil else { return false }
+        case ("reminder", 2...) where HealthRules.parseSlot(parts[1]) != nil:
             showTab(.today)
-            store.respond(response, slot: parts[1])
             return true
         default:
             return false
         }
     }
 
+    /// A notification response (a tap, `open`, or one of its buttons): selects `today`, resets it to `[Today]`
+    /// and applies the response to the slot's unlogged doses (once the data has loaded, if it hasn't yet).
+    /// Returns when it has been fully handled: data loaded (or failed to), response applied, snapshot saved and
+    /// reminders reconciled. Background entry points await it before telling the OS they are done.
+    public func handleReminderResponse(slot: String, action: ReminderResponse) async {
+        showTab(.today)
+        await store.respond(action, slot: slot)
+    }
+
+    /// Returns once the initial load and every save and reminder reconciliation requested so far have finished
+    /// (immediately after a failed load with nothing pending). Await it before the process may be suspended.
+    public func settle() async {
+        await store.settle()
+    }
+
     /// Selects `tab` and resets its stack to its root screen.
     private func showTab(_ tab: AppTab) {
+        navigationRequest += 1
         tabs.select(tab)
         resetTab(tab)
     }
@@ -93,6 +114,27 @@ public final class AppRoot {
         case .history: .history(HistoryViewModel(store: store))
         }
         tabs.stack(tab).reset([root])
+    }
+
+    private func medicationDetail(id: String) -> Route {
+        .medicationDetail(MedicationDetailViewModel(id: id, store: store, navigation: self))
+    }
+
+    /// Whenever the data no longer contains a medication, its detail and edit-mode editor leave every stack.
+    private func removeStaleRoutes(_ snapshot: HealthSnapshot) {
+        guard snapshot.phase == .loaded else { return }
+        let data = snapshot.data
+        for tab in tabs.tabs {
+            let stack = tabs.stack(tab)
+            let kept = stack.routes.filter { route in
+                switch route {
+                case .medicationDetail(let viewModel): data.medication(viewModel.state.id) != nil
+                case .medicationEditor(let viewModel): viewModel.state.medicationId.map { data.medication($0) != nil } ?? true
+                case .today, .medications, .history, .reminders: true
+                }
+            }
+            if kept.count != stack.routes.count { stack.reset(kept) }
+        }
     }
 }
 
@@ -106,7 +148,7 @@ extension AppRoot: HealthNavigating {
     }
 
     public func showMedicationDetail(id: String) {
-        tabs.selectedStack.push(.medicationDetail(MedicationDetailViewModel(id: id, store: store, navigation: self)))
+        tabs.selectedStack.push(medicationDetail(id: id))
     }
 
     public func close(_ screen: AnyObject) {
