@@ -7,7 +7,7 @@ and can be answered from the notification. It is small, slow and device-bound, s
 
 ```
 ./reflex e2e ios        # tools/e2e-ios.sh: iOS 27 Simulator, XCUITest (AppMobileUITests), then tests/reflex-live
-./reflex e2e android    # tools/e2e-android.sh: API 37 emulator, androidTest (Compose UI test + UI Automator), then tests/reflex-live
+./reflex e2e android    # tools/e2e-android.sh: API 37 emulator, the self-instrumenting :e2e module (UI Automator), then tests/reflex-live
 ```
 
 ## Devices
@@ -17,7 +17,8 @@ and can be answered from the notification. It is small, slow and device-bound, s
 | Runtime / image | iOS 27 Simulator runtime (`xcodebuild -downloadPlatform iOS`) | `system-images;android-37.0;google_apis;arm64-v8a` + `emulator` (sdkmanager) |
 | Device | simulator `Health Beta E2E` (a current iPhone device type), created if missing | AVD `health-beta-api37` (Pixel profile), created if missing; may run `-no-window` |
 | Fresh state | `simctl erase` before the run (permissions reset too) | `adb uninstall com.beta.health` / `pm clear` before each journey that needs it |
-| Live layer | DEBUG socket on 127.0.0.1:7777 (the simulator shares the host's loopback) | `adb forward tcp:7777 tcp:7777` |
+| Live layer | DEBUG socket on 127.0.0.1:7777 (the simulator shares the host's loopback) | `adb forward tcp:$REFLEX_LIVE_PORT tcp:7777` (default 7777; set `REFLEX_LIVE_PORT` when the iOS DEBUG app holds 7777 on the Mac) |
+| UI tests run as | `xcodebuild test-without-building` on the `AppMobileUITests` target | `am instrument` of the `:e2e` module (installed with `adb`; not `connectedAndroidTest`, which grants every runtime permission and uninstalls the app) |
 
 The scripts check prerequisites and print the exact install command when something is missing; they never install
 runtimes silently.
@@ -53,7 +54,7 @@ runtimes silently.
 | As-needed rows | `today.asNeeded.<medicationId>`, `.summary`, `.log`, `.undo` (suffixes on that id) |
 | Medications | `medications.add`, `medications.empty`, `medications.section.active`, `medications.section.ended`, `medications.section.archived`, `medications.item.<medicationId>` |
 | Editor | `editor.name`, `editor.kind.medication`, `editor.kind.supplement`, `editor.dose`, `editor.notes`, `editor.asNeeded`, `editor.addTime`, `editor.time.<HH:mm>`, `editor.time.<HH:mm>.remove`, `editor.weekday.<1-7>`, `editor.startDate`, `editor.endDate`, `editor.endDate.clear`, `editor.save`, `editor.error.name`, `editor.error.times`, `editor.error.weekdays`, `editor.error.dates`, `editor.error.time` |
-| Time picker (editor) | `editor.timePicker` (iOS wheel), `editor.timePicker.hour`, `editor.timePicker.minute` (Android `TimeInput` fields), `editor.timePicker.confirm`, `editor.timePicker.cancel` |
+| Time picker (editor) | `editor.timePicker` (iOS wheel), `editor.timePicker.hour`, `editor.timePicker.minute` (Android: two 24 h digit fields starting at 08:00; Material3 `TimeInput` can't tag its inner fields), `editor.timePicker.confirm`, `editor.timePicker.cancel` |
 | Detail | `detail.name`, `detail.schedule`, `detail.status`, `detail.adherence`, `detail.edit`, `detail.archive`, `detail.restore`, `detail.delete` |
 | Delete dialog | `deleteDialog.confirm`, `deleteDialog.cancel` |
 | History | `history.date` (opens the date picker), `history.previous`, `history.next`, `history.summary`, `history.message`, `history.doseError` |
