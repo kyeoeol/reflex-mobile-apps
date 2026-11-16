@@ -282,7 +282,7 @@ test("given a medication with history, the user sees its schedule, adherence and
     action: "Open",
     payload: { id: "ibuprofen" },
     expectation: ({ state }) => {
-      expect(state).toMatchObject({ schedule: "As needed", adherenceLabel: "No data yet", adherenceCaption: null, takenCount: 0, missedCount: 0 });
+      expect(state).toMatchObject({ schedule: "As needed", adherenceLabel: null, adherenceCaption: "No data yet", takenCount: 0, missedCount: 0 });
       expect(state.history).toEqual([
         {
           id: "log:l4", medicationId: "ibuprofen", name: "Ibuprofen", dose: "200 mg", date: "2026-11-16", time: null,

@@ -12,6 +12,7 @@ extension RemindersViewModel: IntrospectionProviding {
                 "permission": .string(viewModel.state.permission),
                 "mayBeLate": .bool(viewModel.state.mayBeLate),
                 "statusLabel": .string(viewModel.state.statusLabel),
+                "actionLabel": JSONValue(viewModel.state.actionLabel),
                 "reminders": .array(viewModel.state.reminders.map { reminder in
                     [
                         "id": .string(reminder.id),

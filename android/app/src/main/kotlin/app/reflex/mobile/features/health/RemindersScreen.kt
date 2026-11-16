@@ -26,8 +26,10 @@ fun RemindersScreen(vm: RemindersViewModel, backTitle: String, onBack: () -> Uni
         HealthTopBar("", backTitle = backTitle, onBack = onBack)
         ScreenTitle("Reminders")
         Text(state.statusLabel, style = HealthType.body, color = HealthTheme.colors.body, modifier = Modifier.testTag("reminders.status"))
-        PillButton("Turn on reminders", { vm.send(Action.TurnOnReminders) }, modifier = Modifier.testTag("reminders.turnOn"),
-            kind = PillButtonKind.Outline)
+        state.actionLabel?.let { label ->
+            PillButton(label, { vm.send(Action.TurnOnReminders) }, modifier = Modifier.testTag("reminders.turnOn"),
+                kind = PillButtonKind.Outline)
+        }
         if (state.reminders.isNotEmpty()) Column {
             for (reminder in state.reminders) {
                 ReminderRow(reminder.kind, HealthFormat.reminderTime(reminder.fireAt), reminder.title, reminder.body,

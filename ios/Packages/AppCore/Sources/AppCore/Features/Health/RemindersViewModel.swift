@@ -17,6 +17,8 @@ public final class RemindersViewModel: ViewModel {
         public fileprivate(set) var permission = NotificationPermission.notDetermined.rawValue
         public fileprivate(set) var mayBeLate = false
         public fileprivate(set) var statusLabel = ""
+        /// The button under the status: "Turn on reminders" / "Open Settings", or nil when there is nothing to fix.
+        public fileprivate(set) var actionLabel: String?
         public fileprivate(set) var reminders: [Item] = []
     }
 
@@ -59,6 +61,11 @@ public final class RemindersViewModel: ViewModel {
             case (.authorized, true): "Reminders may arrive a few minutes late"
             case (.denied, _): "Reminders are off. Turn them on in Settings."
             case (.notDetermined, _): "Reminders aren't set up yet"
+            }
+            state.actionLabel = switch (snapshot.permission, snapshot.mayBeLate) {
+            case (.authorized, false): nil
+            case (.notDetermined, _): "Turn on reminders"
+            case (.denied, _), (.authorized, true): "Open Settings"
             }
             state.reminders = snapshot.pending.map { reminder in
                 Item(id: reminder.id, kind: reminder.kind, fireAt: HealthTime.format(reminder.fireAt, in: snapshot.zone),

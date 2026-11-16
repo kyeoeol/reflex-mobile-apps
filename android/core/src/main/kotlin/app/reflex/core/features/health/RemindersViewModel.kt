@@ -13,6 +13,8 @@ class RemindersViewModel(
         val permission: String,
         val mayBeLate: Boolean,
         val statusLabel: String,
+        /** The button under the status: "Turn on reminders" / "Open Settings", or null when there is nothing to fix. */
+        val actionLabel: String?,
         val reminders: List<ReminderItem>,
     )
 
@@ -53,6 +55,11 @@ class RemindersViewModel(
                     if (snapshot.mayBeLate) "Reminders may arrive a few minutes late" else "Reminders are on"
                 NotificationPermission.Denied -> "Reminders are off. Turn them on in Settings."
                 NotificationPermission.NotDetermined -> "Reminders aren't set up yet"
+            },
+            actionLabel = when (snapshot.permission) {
+                NotificationPermission.Authorized -> if (snapshot.mayBeLate) "Open Settings" else null
+                NotificationPermission.Denied -> "Open Settings"
+                NotificationPermission.NotDetermined -> "Turn on reminders"
             },
             reminders = snapshot.pending.map {
                 ReminderItem(it.id, it.kind, HealthTime.formatInstant(it.fireAt, snapshot.zone), it.title, it.body)

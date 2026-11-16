@@ -12,7 +12,7 @@ test("given scheduled medications, the user sees a week of reminders, one per ti
   await using session = createBehaviorSession({ fixtures: [fixture("Health.default")] });
   await openToday(session);
   const reminders = await openReminders(session, ({ state }) => {
-    expect(state).toMatchObject({ permission: "authorized", mayBeLate: false, statusLabel: "Reminders are on" });
+    expect(state).toMatchObject({ permission: "authorized", mayBeLate: false, statusLabel: "Reminders are on", actionLabel: null });
     expect(state.reminders).toHaveLength(35);
   });
   expect(reminders.state.reminders.slice(0, 5)).toEqual([
@@ -143,7 +143,9 @@ test("given notifications are denied, the user is told reminders are off, and tu
     expect(state).toMatchObject({ reminderBanner: "Reminders are off", reminderBannerAction: "Open Settings" });
   });
   await openReminders(session, ({ state }) => {
-    expect(state).toMatchObject({ permission: "denied", statusLabel: "Reminders are off. Turn them on in Settings.", reminders: [] });
+    expect(state).toMatchObject({
+      permission: "denied", statusLabel: "Reminders are off. Turn them on in Settings.", actionLabel: "Open Settings", reminders: [],
+    });
   });
   // Opens the system settings; nothing changes in the app until the user comes back with permission.
   await session.do({ action: "TurnOnReminders", expectation: ({ state }) => expect(state.permission).toBe("denied") });
@@ -174,12 +176,14 @@ test("given reminders were never set up, the user can turn them on and they get 
     expect(state).toMatchObject({ reminderBanner: "Turn on reminders to get notified", reminderBannerAction: "Turn on reminders" });
   });
   await openReminders(session, ({ state }) => {
-    expect(state).toMatchObject({ permission: "notDetermined", statusLabel: "Reminders aren't set up yet", reminders: [] });
+    expect(state).toMatchObject({
+      permission: "notDetermined", statusLabel: "Reminders aren't set up yet", actionLabel: "Turn on reminders", reminders: [],
+    });
   });
   await session.do({
     action: "TurnOnReminders",
     expectation: ({ state }) => {
-      expect(state).toMatchObject({ permission: "authorized", statusLabel: "Reminders are on" });
+      expect(state).toMatchObject({ permission: "authorized", statusLabel: "Reminders are on", actionLabel: null });
       expect(state.reminders).toHaveLength(35);
     },
   });
@@ -215,7 +219,9 @@ test("given exact alarms aren't allowed, the user is told reminders may arrive a
     expect(state).toMatchObject({ reminderBanner: "Reminders may arrive a few minutes late", reminderBannerAction: "Open Settings" });
   });
   await openReminders(session, ({ state }) => {
-    expect(state).toMatchObject({ permission: "authorized", mayBeLate: true, statusLabel: "Reminders may arrive a few minutes late" });
+    expect(state).toMatchObject({
+      permission: "authorized", mayBeLate: true, statusLabel: "Reminders may arrive a few minutes late", actionLabel: "Open Settings",
+    });
     expect(state.reminders).toHaveLength(35);
   });
 });

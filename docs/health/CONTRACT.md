@@ -326,8 +326,8 @@ Then the editor is popped and, if the medication has times and permission is not
 ### MedicationDetail
 
 State: `id`, `name`, `kind`, `dose`, `notes`, `schedule`, `startDate`, `endDate`, `status`
-(`active`/`ended`/`archived`), `adherenceLabel` (`"<p>%"` or `"No data yet"`), `adherenceCaption`
-(`"<taken> of <n> doses taken in the last 30 days"`, null with "No data yet"), `takenCount`, `skippedCount`,
+(`active`/`ended`/`archived`), `adherenceLabel` (`"<p>%"`, or null when there is nothing to measure), `adherenceCaption`
+(`"<taken> of <n> doses taken in the last 30 days"`, or `"No data yet"`), `takenCount`, `skippedCount`,
 `missedCount`, `history`, `canArchive`, `canRestore`, `isConfirmingDelete`.
 
 - Window: the 30 days ending today. Counts over its occurrences with status taken/skipped/missed; n = their sum.
@@ -352,7 +352,9 @@ Actions: `PreviousDay`, `NextDay` (no-op at today), `SelectDate {date}` (future 
 
 ### Reminders (pushed from Today)
 
-State: `permission` (`notDetermined`/`denied`/`authorized`), `mayBeLate`, `statusLabel`, `reminders`
+State: `permission` (`notDetermined`/`denied`/`authorized`), `mayBeLate`, `statusLabel`, `actionLabel` (the button
+under the status, same values as Today's `reminderBannerAction`: notDetermined `"Turn on reminders"`; denied, or
+authorized and mayBeLate, `"Open Settings"`; else null), `reminders`
 (`[{id, kind, fireAt, title, body}]`, the scheduler's pending list).
 `statusLabel`: authorized `"Reminders are on"`, or `"Reminders may arrive a few minutes late"` when mayBeLate;
 denied `"Reminders are off. Turn them on in Settings."`; notDetermined `"Reminders aren't set up yet"`.

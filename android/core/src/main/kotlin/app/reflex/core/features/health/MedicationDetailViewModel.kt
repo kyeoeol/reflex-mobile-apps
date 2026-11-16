@@ -23,8 +23,8 @@ class MedicationDetailViewModel(
         val startDate: String,
         val endDate: String?,
         val status: String,
-        val adherenceLabel: String,
-        val adherenceCaption: String?,
+        val adherenceLabel: String?,
+        val adherenceCaption: String,
         val takenCount: Int,
         val skippedCount: Int,
         val missedCount: Int,
@@ -89,7 +89,7 @@ class MedicationDetailViewModel(
         /** What the screen shows while the medication isn't known (before load, unknown or deleted id). */
         fun placeholder(id: String) = State(
             id = id, name = "", kind = "", dose = "", notes = "", schedule = "", startDate = "", endDate = null,
-            status = MedicationStatus.Active.code, adherenceLabel = NO_DATA, adherenceCaption = null, takenCount = 0,
+            status = MedicationStatus.Active.code, adherenceLabel = null, adherenceCaption = NO_DATA, takenCount = 0,
             skippedCount = 0, missedCount = 0, history = emptyList(), canArchive = false, canRestore = false,
             isConfirmingDelete = false,
         )
@@ -124,8 +124,8 @@ class MedicationDetailViewModel(
                 startDate = HealthTime.date(medication.startDate),
                 endDate = medication.endDate?.let(HealthTime::date),
                 status = status.code,
-                adherenceLabel = percent?.let { "$it%" } ?: NO_DATA,
-                adherenceCaption = percent?.let { "$taken of $resolved doses taken in the last 30 days" },
+                adherenceLabel = percent?.let { "$it%" },
+                adherenceCaption = percent?.let { "$taken of $resolved doses taken in the last 30 days" } ?: NO_DATA,
                 takenCount = taken,
                 skippedCount = skipped,
                 missedCount = missed,

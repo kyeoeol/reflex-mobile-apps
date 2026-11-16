@@ -50,8 +50,8 @@ fun MedicationDetailScreen(vm: MedicationDetailViewModel, backTitle: String, onB
         Column(Modifier.testTag("detail.adherence").semantics(mergeDescendants = true) {},
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionHeader("Adherence")
-            Text(state.adherenceLabel, style = HealthType.display, color = colors.primary)
-            state.adherenceCaption?.let { Text(it, style = HealthType.caption, color = colors.secondary) }
+            state.adherenceLabel?.let { Text(it, style = HealthType.display, color = colors.primary) }
+            Text(state.adherenceCaption, style = HealthType.caption, color = colors.secondary)
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (state.canArchive) PillButton("Archive", { vm.send(Action.Archive) }, modifier = Modifier.testTag("detail.archive"),

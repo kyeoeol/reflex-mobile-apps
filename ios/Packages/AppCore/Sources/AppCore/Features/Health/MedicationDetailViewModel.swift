@@ -14,9 +14,10 @@ public final class MedicationDetailViewModel: ViewModel {
         public fileprivate(set) var startDate = ""
         public fileprivate(set) var endDate: String?
         public fileprivate(set) var status = MedicationStatus.active.rawValue
-        public fileprivate(set) var adherenceLabel = "No data yet"
-        /// `"<taken> of <n> doses taken in the last 30 days"`; nil with "No data yet".
-        public fileprivate(set) var adherenceCaption: String?
+        /// `"<p>%"`, or nil when there is nothing to measure yet.
+        public fileprivate(set) var adherenceLabel: String?
+        /// `"<taken> of <n> doses taken in the last 30 days"`, or `"No data yet"`.
+        public fileprivate(set) var adherenceCaption = "No data yet"
         public fileprivate(set) var takenCount = 0
         public fileprivate(set) var skippedCount = 0
         public fileprivate(set) var missedCount = 0
@@ -108,8 +109,8 @@ public final class MedicationDetailViewModel: ViewModel {
             state.endDate = medication?.endDate
             state.status = status.rawValue
             // round-half-up(100 × taken / resolved), in integers.
-            state.adherenceLabel = resolved == 0 ? "No data yet" : "\((200 * counts.taken + resolved) / (2 * resolved))%"
-            state.adherenceCaption = resolved == 0 ? nil : "\(counts.taken) of \(resolved) doses taken in the last 30 days"
+            state.adherenceLabel = resolved == 0 ? nil : "\((200 * counts.taken + resolved) / (2 * resolved))%"
+            state.adherenceCaption = resolved == 0 ? "No data yet" : "\(counts.taken) of \(resolved) doses taken in the last 30 days"
             state.takenCount = counts.taken
             state.skippedCount = counts.skipped
             state.missedCount = counts.missed

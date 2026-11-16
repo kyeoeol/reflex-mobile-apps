@@ -14,6 +14,7 @@ class RemindersViewModelIntrospectionNode(private val viewModel: RemindersViewMo
                 "permission" to JsonValue.Str(it.permission),
                 "mayBeLate" to JsonValue.Bool(it.mayBeLate),
                 "statusLabel" to JsonValue.Str(it.statusLabel),
+                "actionLabel" to JsonValue.of(it.actionLabel),
                 "reminders" to JsonValue.Arr(it.reminders.map { reminder ->
                     JsonValue.obj(
                         "id" to JsonValue.Str(reminder.id),
