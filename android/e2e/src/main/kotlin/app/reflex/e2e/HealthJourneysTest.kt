@@ -84,8 +84,9 @@ class HealthJourneysTest {
 
     @Test
     fun j04_E5_dataSurvivesTerminateAndRelaunch() {
-        // Leave a log behind too: take the dose with the inline button.
-        tap("${dose("today")}.take")
+        // Leave a log behind too (the dose is upcoming, so it has no inline buttons: use the menu).
+        tap(dose("today"))
+        waitFor("doseMenu.take").click()
         waitForText("today.progress", "1 of 1 taken")
         terminate()
         launch()
@@ -209,7 +210,8 @@ class HealthJourneysTest {
             HealthDevice.screenshot("dark-xl-editor")
             scrollTo("editor.weekday.7")
             HealthDevice.screenshot("dark-xl-editor-2")
-            setNight(false)
+            setNight(false, shownId = "editor.save")
+            scrollTo("editor.name")
             HealthDevice.screenshot("light-xl-editor")
             waitFor("editor.cancel").click()
             waitFor("detail.name")
@@ -269,9 +271,10 @@ class HealthJourneysTest {
         tap("tab.today")
     }
 
-    private fun setNight(on: Boolean) {
+    /** Switches the system appearance; the Activity is recreated and shows [shownId] again. */
+    private fun setNight(on: Boolean, shownId: String = "tab.today") {
         HealthDevice.shell("cmd uimode night ${if (on) "yes" else "no"}")
-        waitFor("tab.today")
+        waitFor(shownId)
     }
 
     private fun assertHittable(id: String) {

@@ -69,7 +69,7 @@ fun TodayScreen(vm: TodayViewModel) {
                 SectionHeader(group.label, modifier = Modifier.padding(bottom = 8.dp))
                 for (dose in group.doses) {
                     DoseRowFor(dose, "today", onTake = { vm.send(Action.Take(it)) }, onTakeAt = { takeAtDose = dose },
-                        onSkip = { vm.send(Action.Skip(it)) }, onUndo = { vm.send(Action.Undo(it)) })
+                        onSkip = { vm.send(Action.Skip(it)) }, onUndo = { vm.send(Action.Undo(it)) }, showTime = false)
                 }
             }
         }
@@ -123,13 +123,11 @@ private fun TodayMessage(message: String, kind: String?, vm: TodayViewModel) {
 /** A dose object bound to [DoseRow]: every flag comes from state; the ids are `<prefix>.dose.<doseId>…`. */
 @Composable
 fun DoseRowFor(dose: DoseItem, prefix: String, onTake: (String) -> Unit, onTakeAt: () -> Unit, onSkip: (String) -> Unit,
-               onUndo: (String) -> Unit, showDate: Boolean = false) {
-    val meta = listOfNotNull(
-        if (showDate) HealthFormat.date(dose.date) else null,
-        dose.time,
-        dose.takenAt?.let { "Taken at $it" },
-    ).joinToString(" · ")
+               onUndo: (String) -> Unit, showTime: Boolean) {
+    // Today's rows sit under their group's label, so only History repeats the scheduled time.
+    val meta = if (showTime) dose.time.orEmpty() else ""
+    val taken = listOfNotNull(dose.takenAt?.let { "Taken at $it" }, HealthFormat.timing(dose.timing)).joinToString(" · ")
     DoseRow(dose.name, dose.dose, meta, HealthFormat.status(dose.status), dose.needsAction, dose.canTake, dose.canTakeAt,
         dose.canSkip, dose.canUndo, onTake = { onTake(dose.id) }, onTakeAt = onTakeAt, onSkip = { onSkip(dose.id) },
-        onUndo = { onUndo(dose.id) }, timing = HealthFormat.timing(dose.timing), tag = "$prefix.dose.${dose.id}")
+        onUndo = { onUndo(dose.id) }, timing = taken.ifEmpty { null }, tag = "$prefix.dose.${dose.id}")
 }

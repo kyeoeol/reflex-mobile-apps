@@ -45,7 +45,7 @@ fun HistoryScreen(vm: HistoryViewModel) {
         if (state.doses.isNotEmpty()) Column {
             for (dose in state.doses) {
                 DoseRowFor(dose, "history", onTake = { vm.send(Action.Take(it)) }, onTakeAt = { takeAtDose = dose },
-                    onSkip = { vm.send(Action.Skip(it)) }, onUndo = { vm.send(Action.Undo(it)) })
+                    onSkip = { vm.send(Action.Skip(it)) }, onUndo = { vm.send(Action.Undo(it)) }, showTime = true)
             }
         }
     }

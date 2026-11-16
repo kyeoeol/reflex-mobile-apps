@@ -7,6 +7,7 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.Condition
 import androidx.test.uiautomator.Direction
+import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
@@ -104,19 +105,27 @@ object HealthDevice {
         element.text?.takeIf { it.isNotEmpty() } ?: element.children.map(::text).filter { it.isNotEmpty() }.joinToString(" ")
     }.getOrDefault("")
 
-    /** Scrolls the screen's scrolling column until [id] is on screen (down first, then up). */
+    /**
+     * Scrolls the screen's scrolling column until [id] is on screen (down first, then up). Compose replaces nodes
+     * when it recomposes, so every lookup tolerates a node going stale and looks again.
+     */
     fun scrollTo(id: String): UiObject2 {
-        find(id)?.let { if (isOnScreen(it)) return it }
+        // The screen may still be changing (navigation, a dialog closing): give the element a moment to appear.
+        device.wait(Until.hasObject(By.res(id)), 1_500L)
+        onScreen(id)?.let { return it }
         for (direction in listOf(Direction.DOWN, Direction.UP)) {
             repeat(12) {
-                val scrollable = device.findObject(By.scrollable(true).pkg(PACKAGE)) ?: return waitFor(id)
-                val moved = scrollable.scroll(direction, 0.6f)
-                find(id)?.let { if (isOnScreen(it)) return it }
+                val moved = runCatching {
+                    device.findObject(By.scrollable(true).pkg(PACKAGE))?.scroll(direction, 0.6f) ?: false
+                }.getOrDefault(true)
+                onScreen(id)?.let { return it }
                 if (!moved) return@repeat
             }
         }
-        return waitFor(id)
+        return onScreen(id) ?: waitFor(id)
     }
+
+    private fun onScreen(id: String): UiObject2? = runCatching { find(id)?.takeIf(::isOnScreen) }.getOrNull()
 
     fun isOnScreen(element: UiObject2): Boolean {
         val bounds = element.visibleBounds
@@ -124,6 +133,14 @@ object HealthDevice {
     }
 
     fun tap(id: String) {
+        repeat(2) {
+            try {
+                scrollTo(id).click()
+                return
+            } catch (_: StaleObjectException) {
+                // Recomposed between finding and clicking: find it again.
+            }
+        }
         scrollTo(id).click()
     }
 

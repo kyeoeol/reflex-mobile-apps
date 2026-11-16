@@ -71,7 +71,7 @@ fun DoseRow(name: String, dose: String, meta: String, status: DoseStatusKind,
                 .clickable(role = Role.Button, onClickLabel = "Dose actions") { expanded = true }
                 .semantics(mergeDescendants = true) {}.padding(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                MetaRow(meta)
+                if (meta.isNotEmpty()) MetaRow(meta)
                 Text(name, style = HealthType.row, color = HealthTheme.colors.primary)
                 if (dose.isNotEmpty()) Text(dose, style = HealthType.caption, color = HealthTheme.colors.secondary)
                 StatusChip(status, modifier = Modifier.tagged(tag?.let { "$it.status" }))
