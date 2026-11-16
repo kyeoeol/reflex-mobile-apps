@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathBuilder
+import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
@@ -36,4 +37,14 @@ object HealthIcons {
         curveTo(7f, 1f, 17f, 1f, 17f, 8f); lineTo(17f, 14f); lineTo(19f, 17f); close()
         moveTo(10f, 20f); curveTo(10f, 23f, 14f, 23f, 14f, 20f)
     }
+
+    private fun svg(name: String, d: String) = ImageVector.Builder(
+        name = name, defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f
+    ).addPath(pathData = addPathNodes(d), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.75f).build()
+
+    // Tab bar (paths from docs/design/mockups.html).
+    val Calendar = svg("Today", "M4 5h16v16H4Zm4-2v4m8-4v4M4 11h16")
+    val Pill = svg("Medications", "m8 4-4 4a6 6 0 0 0 8 8l4-4a6 6 0 0 0-8-8ZM5 7l8 8")
+    val History = svg("History", "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 4v5l4 2")
+    val Close = icon("Remove") { moveTo(6f, 6f); lineTo(18f, 18f); moveTo(18f, 6f); lineTo(6f, 18f) }
 }

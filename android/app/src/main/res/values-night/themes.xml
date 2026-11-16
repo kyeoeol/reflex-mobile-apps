@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.HealthBeta" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/health_background</item>
+        <item name="android:colorBackground">@color/health_background</item>
+    </style>
+    <color name="health_background">#000000</color>
+</resources>
