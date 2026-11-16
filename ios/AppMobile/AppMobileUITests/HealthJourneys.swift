@@ -75,11 +75,16 @@ final class HealthJourneys: XCTestCase {
         springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.002))
             .press(forDuration: 0.1, thenDragTo: springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.75)))
         let notification = springboard.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS %@", "Time for Vitamin D")).firstMatch
+            .matching(NSPredicate(format: "identifier == 'NotificationShortLookView' AND label CONTAINS %@", "Time for Vitamin D"))
+            .firstMatch
         let remaining = fireAt.timeIntervalSinceNow
         XCTAssertTrue(notification.waitForExistence(timeout: max(remaining, 0) + 120),
                       "No notification\n\(springboard.debugDescription)")
-        notification.press(forDuration: 1.0)
+        // Swipe left → View expands it with its actions (a long press doesn't on the simulator).
+        notification.descendants(matching: .button).matching(identifier: "ShortLook.Platter.Content.Seamless").firstMatch.swipeLeft()
+        let view = springboard.buttons.matching(identifier: "swipe-action-button-identifier").matching(NSPredicate(format: "label == 'View'")).firstMatch
+        XCTAssertTrue(view.waitForExistence(timeout: 10), "No View action\n\(springboard.debugDescription)")
+        view.tap()
         let taken = springboard.buttons["Taken"]
         XCTAssertTrue(taken.waitForExistence(timeout: 10), "No Taken action\n\(springboard.debugDescription)")
         taken.tap()
