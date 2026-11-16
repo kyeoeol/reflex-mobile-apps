@@ -162,6 +162,13 @@ rule are left alone); **skipped** logs them skipped; **snooze** sets the slot's 
 is `≥ T + 120 min` (then nothing happens). A slot with no unlogged dose ignores the three. Responses (and deep links)
 that arrive before the data has loaded are applied once loading has finished.
 
+`handleReminderResponse` is `async` (Swift) / `suspend` (Kotlin) and returns only when the response has been fully
+handled: the data loaded (or failed to load), the response applied, the snapshot saved and the reminders reconciled.
+`AppRoot.settle()` (`async` / `suspend`) returns once the initial load and every save/reconcile requested so far have
+finished. Background entry points (an iOS notification action, Android receivers for alarms, actions, boot, time
+changes) await these before telling the OS they are done, so the process is never suspended or killed mid-save.
+The CLI's `device.event` replies after `handleReminderResponse` returns.
+
 Core recomputes and hands the set to the scheduler after: the initial load, every data change, every permission
 change, every clock change. After handing it over Core reads the scheduler's pending list back; that list is what the
 Reminders screen shows. Permission is requested (only if `notDetermined`) right after the editor saves a medication
