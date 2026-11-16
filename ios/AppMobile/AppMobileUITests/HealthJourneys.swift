@@ -41,7 +41,8 @@ final class HealthJourneys: XCTestCase {
         // E3: the Reminders screen reads the pending reminder back from the OS scheduler.
         d.tap("today.openReminders")
         d.expectText("reminders.status", "Reminders are on")
-        let reminder = d.wait(d.element("reminders.item.dose:\(today)T\(time)"))
+        // Scheduling goes through the OS notification daemon after every change (Take, then Undo); give it time.
+        let reminder = d.wait(d.element("reminders.item.dose:\(today)T\(time)"), timeout: 45)
         XCTAssertTrue(reminder.label.contains("Time for Vitamin D"), reminder.label)
         XCTAssertTrue(reminder.label.contains(time), reminder.label)
         d.goBack()

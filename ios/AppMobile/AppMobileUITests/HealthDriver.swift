@@ -145,7 +145,8 @@ struct HealthDriver {
     func answerPermission(allow: Bool, file: StaticString = #filePath, line: UInt = #line) {
         let predicate = NSPredicate(format: allow ? "label BEGINSWITH 'Allow'" : "label BEGINSWITH 'Don'")
         let button = springboard.alerts.buttons.matching(predicate).firstMatch
-        if !button.waitForExistence(timeout: 20) {
+        // The system shows the alert when it gets to it; on a busy simulator that can take well over 20 s.
+        if !button.waitForExistence(timeout: 60) {
             XCTFail("No permission alert\n\(springboard.debugDescription)", file: file, line: line)
             return
         }

@@ -98,6 +98,24 @@ log "Building AppMobile + AppMobileUITests (derived data: $derived)"
 xcodebuild -project "$PROJECT_DIR/AppMobile.xcodeproj" -scheme AppMobile -destination "id=$udid" \
   -derivedDataPath "$derived" build-for-testing -quiet
 
+# --- Warm up the freshly erased simulator ----------------------------------------------------------------------
+# Right after an erase the system is still busy for a minute or more (language assets, system apps asking for
+# notification permission), which made the first journey group miss the permission alert or read the reminders
+# before the app had scheduled them. Launch the app once and wait until its DEBUG socket is up (Core built, store
+# opened), then remove it again so every group still starts from a fresh install.
+app_path="$derived/Build/Products/Debug-iphonesimulator/HealthBeta.app"
+[[ -d "$app_path" ]] || die "built app not found at $app_path"
+log "Warming up the simulator"
+xcrun simctl install "$udid" "$app_path"
+xcrun simctl launch "$udid" "$BUNDLE_ID" >/dev/null
+warm_deadline=$(($(date +%s) + 180))
+until nc -z 127.0.0.1 7777 >/dev/null 2>&1; do
+  (($(date +%s) < warm_deadline)) || die "the app never came up on the simulator (no DEBUG socket on 7777 after 180 s)"
+  sleep 1
+done
+xcrun simctl terminate "$udid" "$BUNDLE_ID" >/dev/null 2>&1 || true
+xcrun simctl uninstall "$udid" "$BUNDLE_ID" >/dev/null 2>&1 || true
+
 # --- Journeys --------------------------------------------------------------------------------------------------
 
 results=()
