@@ -39,7 +39,31 @@ runtimes silently.
   Waiting for a scheduled notification may take up to ~150 s; that journey is the only slow one.
 - No test-only code paths in the app. The only DEBUG-only piece remains the Reflex socket server.
 
+## Accessibility identifiers (identical on both platforms; the UI tests use only these and contract literals)
+
+`<id>` placeholders are the contract's ids (`doseId`, `medicationId`, reminder `id`, `HH:mm`, weekday 1-7).
+
+| Screen | Identifiers |
+|---|---|
+| Tab bar | `tab.today`, `tab.medications`, `tab.history` |
+| Today | `today.date`, `today.progress`, `today.message`, `today.retry`, `today.banner`, `today.banner.action`, `today.doseError`, `today.openReminders`, `today.addMedication`, `today.group.<key>` |
+| Dose rows (Today: prefix `today`, History: prefix `history`, Detail history: prefix `detail`) | `<prefix>.dose.<doseId>` (the row; tap opens the dose menu), `<prefix>.dose.<doseId>.status` (status text), `<prefix>.dose.<doseId>.take`, `<prefix>.dose.<doseId>.skip` (inline buttons, only when `needsAction`) |
+| Dose menu | `doseMenu.take`, `doseMenu.takeAt`, `doseMenu.skip`, `doseMenu.undo` |
+| Take-at sheet | `takeAt.picker`, `takeAt.save`, `takeAt.cancel` |
+| As-needed rows | `today.asNeeded.<medicationId>`, `.summary`, `.log`, `.undo` (suffixes on that id) |
+| Medications | `medications.add`, `medications.empty`, `medications.section.active`, `medications.section.ended`, `medications.section.archived`, `medications.item.<medicationId>` |
+| Editor | `editor.name`, `editor.kind.medication`, `editor.kind.supplement`, `editor.dose`, `editor.notes`, `editor.asNeeded`, `editor.addTime`, `editor.time.<HH:mm>`, `editor.time.<HH:mm>.remove`, `editor.weekday.<1-7>`, `editor.startDate`, `editor.endDate`, `editor.endDate.clear`, `editor.save`, `editor.error.name`, `editor.error.times`, `editor.error.weekdays`, `editor.error.dates`, `editor.error.time` |
+| Time picker (editor) | `editor.timePicker` (iOS wheel), `editor.timePicker.hour`, `editor.timePicker.minute` (Android `TimeInput` fields), `editor.timePicker.confirm`, `editor.timePicker.cancel` |
+| Detail | `detail.name`, `detail.schedule`, `detail.status`, `detail.adherence`, `detail.edit`, `detail.archive`, `detail.restore`, `detail.delete` |
+| Delete dialog | `deleteDialog.confirm`, `deleteDialog.cancel` |
+| History | `history.date` (opens the date picker), `history.previous`, `history.next`, `history.summary`, `history.message`, `history.doseError` |
+| Reminders | `reminders.status`, `reminders.turnOn`, `reminders.item.<id>` |
+
+Elements whose state the tests read expose it as accessibility value / text (status text, progress, messages);
+buttons expose their enabled state.
+
 ## Journeys (same on both platforms)
+
 
 | # | Journey | Proves |
 |---|---|---|
@@ -52,6 +76,21 @@ runtimes silently.
 | E7 | Medications → detail → Archive (moves to Archived) → Restore → Delete → confirm → gone from Medications and Today | lifecycle, destructive confirmation |
 | E8 | History: today's entry is listed; previous day shows "Nothing recorded on this day"; next is disabled on today | day pager |
 | E9 | Dark appearance and the largest accessibility text size: Today, the editor and the detail render and their main buttons are hittable | appearance, Dynamic Type / font scale |
+
+Grouping by fresh-state needs (each group starts from a fresh install): **E1+E2+E3+E5**, **E4**, **E6**,
+**E7+E8**, **E9**. iOS runs E6 in a second `test-without-building` pass after `simctl uninstall`; Android uses a
+self-instrumenting test module (`com.android.test`, UI Automator only, elements by resource id) so a journey can
+kill and relaunch the app: kill with Home then `am kill` (never `force-stop`, which clears alarms).
+
+E4 recipe: fire time = next minute boundary + 2 minutes; terminate the app before it fires; wait up to 240 s for the
+notification and find it by title in Notification Center / the notification shade (the transient banner disappears
+after a few seconds); answer **Taken**; relaunch and wait for "1 of 1 taken". Time pickers must be drivable (iOS
+wheel, Android `TimeInput` mode).
+
+**The one exception to "grant nothing up front":** on Android the script grants exact alarms after install
+(`appops set com.beta.health SCHEDULE_EXACT_ALARM allow`), because API 37 denies `SCHEDULE_EXACT_ALARM` by default and
+a 10-minute inexact window would make E1's "no banner" and E4's timing fail. The "may be late" path is covered by the
+headless behavior tests.
 
 After the UI journeys, each script runs `tests/reflex-live` (`REFLEX_PLATFORMS=<platform> ./reflex test --live`)
 against the running DEBUG build.

@@ -96,9 +96,9 @@ test("given the user snoozes a reminder, it comes back in 10 minutes for the dos
     });
     expect(state.reminders).toHaveLength(36);
   });
-  // After it has fired, it's gone.
+  // After it has fired, it's gone (the open Reminders screen updates).
   await session.device({ now: "2026-11-16T09:11:00" });
-  await openReminders(session, ({ state }) => {
+  await session.precondition("Reminders", ({ state }) => {
     expect(reminderIds(state)[0]).toBe("dose:2026-11-16T13:00");
     expect(reminderIds(state).some((id) => id.startsWith("snooze:"))).toBe(false);
   });
@@ -147,8 +147,9 @@ test("given notifications are denied, the user is told reminders are off, and tu
   });
   // Opens the system settings; nothing changes in the app until the user comes back with permission.
   await session.do({ action: "TurnOnReminders", expectation: ({ state }) => expect(state.permission).toBe("denied") });
+  // The user comes back from Settings with reminders allowed; the open Reminders screen updates.
   await session.device({ notificationPermission: "authorized" });
-  await openReminders(session, ({ state }) => {
+  await session.precondition("Reminders", ({ state }) => {
     expect(state).toMatchObject({ permission: "authorized", statusLabel: "Reminders are on" });
     expect(state.reminders).toHaveLength(35);
   });

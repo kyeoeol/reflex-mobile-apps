@@ -149,6 +149,8 @@ Keep this list current: if you change one of these, update it in the same change
   app can open a URL). Headless tests deliver them, and move time or change permissions mid-session, with the
   host commands `device.event` / `device.set` (SDK `session.event` / `session.device`; headless only, `UNSUPPORTED`
   live). `ReflexHost` routes them to a per-session device-control object returned by the CLI's `makeSession`.
+- Background entry points (iOS notification actions, Android alarm/action/boot/time receivers) await
+  `AppRoot.handleReminderResponse` / `AppRoot.settle()` (both async) before telling the OS they are done.
 - Two test layers above the cores: `tests/reflex-live` (protocol, against a running DEBUG build) and native UI E2E on
   simulators/emulators (`./reflex e2e`), with accessibility identifiers shared by both platforms.
 - Apps: iOS project from XcodeGen; Android `:app` is included only when an Android SDK is present

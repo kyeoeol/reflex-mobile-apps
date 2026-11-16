@@ -35,7 +35,7 @@ data class MedicationDraft(
     val endDate: LocalDate?,
 )
 
-/** A notification action button (`reminder/<slot>/taken|skipped|snooze`). */
+/** A notification action button (`AppRoot.handleReminderResponse`); a plain tap only navigates. */
 enum class ReminderResponse { Taken, Skipped, Snooze }
 
 object HealthMutations {
@@ -48,29 +48,29 @@ object HealthMutations {
 
     /** `Take`: taken at now. No-op if already taken, unknown, or a `log:` id. */
     fun take(data: HealthData, doseId: String, context: ChangeContext): Change {
-        val occurrence = occurrence(data, doseId) ?: return Change.NoOp
+        val occurrence = occurrence(data, doseId, context) ?: return Change.NoOp
         if (occurrence.log?.status == LogStatus.Taken) return Change.NoOp
         return logTaken(data, occurrence, context.now, context)
     }
 
     /** `TakeAt`: taken at a local date-time (resolved in the current zone); also corrects an existing time. */
     fun takeAt(data: HealthData, doseId: String, takenAt: String, context: ChangeContext): Change {
-        val occurrence = occurrence(data, doseId) ?: return Change.NoOp
+        val occurrence = occurrence(data, doseId, context) ?: return Change.NoOp
         val local = HealthTime.parseLocalDateTime(takenAt) ?: return Change.Rejected(ERROR_FORMAT)
         return logTaken(data, occurrence, HealthTime.resolve(local.date, local.time, context.zone), context)
     }
 
     /** `Skip`. No-op if already skipped. */
     fun skip(data: HealthData, doseId: String, context: ChangeContext): Change {
-        val occurrence = occurrence(data, doseId) ?: return Change.NoOp
+        val occurrence = occurrence(data, doseId, context) ?: return Change.NoOp
         if (occurrence.log?.status == LogStatus.Skipped) return Change.NoOp
         return Change.Applied(upsert(data, occurrence, LogStatus.Skipped, null, context))
     }
 
     /** `Undo`: removes the dose's log; for `log:<logId>` removes that as-needed log. No-op without a log. */
-    fun undo(data: HealthData, doseId: String): Change {
+    fun undo(data: HealthData, doseId: String, context: ChangeContext): Change {
         val log = when (val ref = DoseRef.parse(doseId)) {
-            is DoseRef.Scheduled -> HealthDays(data).scheduledLog(ref.medicationId, ref.slot.date, ref.slot.time)
+            is DoseRef.Scheduled -> HealthDays(data, context.zone).scheduledLog(ref.medicationId, ref.slot.date, ref.slot.time)
             is DoseRef.AsNeeded -> data.logs.firstOrNull { it.id == ref.logId && it.time == null }
             null -> null
         } ?: return Change.NoOp
@@ -105,7 +105,7 @@ object HealthMutations {
      * A slot without an unlogged dose ignores all of them.
      */
     fun respond(data: HealthData, slot: Slot, response: ReminderResponse, context: ChangeContext): Change {
-        val unlogged = HealthDays(data).occurrences(slot.date).filter { it.time == slot.time && it.log == null && it.medication != null }
+        val unlogged = HealthDays(data, context.zone).occurrences(slot.date).filter { it.time == slot.time && it.log == null && it.medication != null }
         if (unlogged.isEmpty()) return Change.NoOp
         return when (response) {
             ReminderResponse.Taken -> {
@@ -130,9 +130,10 @@ object HealthMutations {
     // Medications --------------------------------------------------------------------------------------------
 
     /**
-     * Adds or edits a medication (the editor validated it). Editing a schedule adds a version from today
-     * (replacing a version that already starts today) and never rewrites history. As-needed: no schedules.
-     * Returns the data and the medication's id.
+     * Adds or edits a medication (the editor validated it). A new medication gets one version from its start date.
+     * Editing the times/weekdays adds a version from today, or from tomorrow when the medication already has a log
+     * dated today (replacing a version that starts on that day); history is never rewritten. As-needed: no
+     * schedules. Returns the data and the medication's id.
      */
     fun saveMedication(data: HealthData, draft: MedicationDraft, context: ChangeContext): Pair<HealthData, String>? {
         val today = context.today
@@ -140,15 +141,22 @@ object HealthMutations {
         val weekdays = draft.weekdays.distinct().sorted()
         val existing = draft.id?.let { id -> data.medications.firstOrNull { it.id == id } }
         if (draft.id != null && existing == null) return null
+        val createdAt = HealthTime.offsetDateTime(context.now, context.zone)
         val schedules = when {
+            existing != null && existing.asNeeded -> emptyList()
             draft.asNeeded -> emptyList()
-            existing == null -> listOf(ScheduleVersion(today, times, weekdays))
+            existing == null -> listOf(ScheduleVersion(draft.startDate, times, weekdays, createdAt))
             else -> {
-                val current = existing.versionOn(today)
-                val unchanged = !existing.asNeeded && current != null &&
-                    current.times.distinct().sorted() == times && current.weekdays.distinct().sorted() == weekdays
-                if (unchanged) existing.schedules
-                else existing.schedules.filter { it.from != today } + ScheduleVersion(today, times, weekdays)
+                val latest = existing.latestVersion
+                val unchanged = latest != null &&
+                    latest.times.distinct().sorted() == times && latest.weekdays.distinct().sorted() == weekdays
+                if (unchanged) {
+                    existing.schedules
+                } else {
+                    val loggedToday = HealthDays(data, context.zone).hasLog(existing.id, today)
+                    val from = if (loggedToday) today.plusDays(1) else today
+                    existing.schedules.filter { it.from != from } + ScheduleVersion(from, times, weekdays, createdAt)
+                }
             }
         }
         val medication = Medication(
@@ -157,7 +165,7 @@ object HealthMutations {
             kind = draft.kind,
             dose = draft.dose,
             notes = draft.notes,
-            asNeeded = draft.asNeeded,
+            asNeeded = existing?.asNeeded ?: draft.asNeeded,
             startDate = draft.startDate,
             endDate = draft.endDate,
             schedules = schedules,
@@ -175,7 +183,10 @@ object HealthMutations {
         return replace(data, medication.copy(archived = medication.archived + ArchivePeriod(context.today, null)))
     }
 
-    /** Closes the open period with `to` = yesterday, dropping it if that is before its `from`. No-op if not archived. */
+    /**
+     * Closes the open period with `to` = yesterday (dropping it if that is before its `from`) and appends a version
+     * from today with the latest times/weekdays, so doses resume from today. No-op if not archived.
+     */
     fun restore(data: HealthData, id: String, context: ChangeContext): Change {
         val medication = data.medications.firstOrNull { it.id == id } ?: return Change.NoOp
         if (medication.archived.none { it.to == null }) return Change.NoOp
@@ -187,7 +198,12 @@ object HealthMutations {
                 else -> period.copy(to = yesterday)
             }
         }
-        return replace(data, medication.copy(archived = periods))
+        val latest = medication.latestVersion
+        val schedules = if (medication.asNeeded || latest == null) medication.schedules
+        else medication.schedules + ScheduleVersion(
+            context.today, latest.times, latest.weekdays, HealthTime.offsetDateTime(context.now, context.zone),
+        )
+        return replace(data, medication.copy(archived = periods, schedules = schedules))
     }
 
     /** Removes the medication and all its logs. */
@@ -199,9 +215,9 @@ object HealthMutations {
     // Helpers ------------------------------------------------------------------------------------------------
 
     /** The occurrence a scheduled dose id points at, or null (malformed, `log:` id, not an occurrence). */
-    private fun occurrence(data: HealthData, doseId: String): Occurrence? {
+    private fun occurrence(data: HealthData, doseId: String, context: ChangeContext): Occurrence? {
         val ref = DoseRef.parse(doseId) as? DoseRef.Scheduled ?: return null
-        return HealthDays(data).occurrence(ref.medicationId, ref.slot.date, ref.slot.time)
+        return HealthDays(data, context.zone).occurrence(ref.medicationId, ref.slot.date, ref.slot.time)
     }
 
     /** null when [takenAt] is allowed for [occurrence], else the literal error. */

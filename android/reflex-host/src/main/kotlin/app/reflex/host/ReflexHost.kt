@@ -14,7 +14,8 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Speaks the Reflex NDJSON protocol (version 1), byte for byte like iOS `ReflexHost`.
- * [handle] must be called on [dispatcher]'s thread (the single thread every ViewModel runs on).
+ * [handle] must be called on [dispatcher]'s thread (the single thread every ViewModel runs on). It suspends while a
+ * command waits for Core (`device.event`), which lets Core's own coroutines run on that thread meanwhile.
  */
 class ReflexHost(
     val platform: String,
@@ -40,7 +41,7 @@ class ReflexHost(
     val readyEvent: String
         get() = JsonValue.obj("event" to JsonValue.Str("ready"), "platform" to JsonValue.Str(platform), "protocol" to JsonValue.Num(PROTOCOL_VERSION)).serialize()
 
-    fun handle(line: String, reply: (String) -> Unit) {
+    suspend fun handle(line: String, reply: (String) -> Unit) {
         if (line.isBlank()) return
         val request = try {
             JsonValue.parse(line).objectValue ?: throw HostException("BAD_REQUEST", "request must be a JSON object")
@@ -62,7 +63,7 @@ class ReflexHost(
         reply(response)
     }
 
-    private fun respond(request: Map<String, JsonValue>, id: JsonValue): JsonValue {
+    private suspend fun respond(request: Map<String, JsonValue>, id: JsonValue): JsonValue {
         val command = request["cmd"]?.stringValue.orEmpty()
         if (command == "session.create") return createSession(request, id)
 
@@ -90,6 +91,20 @@ class ReflexHost(
                 }
                 ok(id)
             }
+            "device.set" -> {
+                val values = request["values"]?.objectValue ?: throw HostException("BAD_REQUEST", "'device.set' needs a 'values' object")
+                deviceControl(session, command).set(values)
+                ok(id)
+            }
+            "device.event" -> {
+                val type = request["type"]?.stringValue ?: throw HostException("BAD_REQUEST", "'device.event' needs a 'type'")
+                val payload = when (val value = request["payload"]) {
+                    null, JsonValue.Null -> emptyMap()
+                    else -> value.objectValue ?: throw HostException("BAD_REQUEST", "'device.event' payload must be an object")
+                }
+                deviceControl(session, command).event(type, payload)
+                ok(id)
+            }
             "session.close" -> {
                 if (mode is Mode.Live) throw HostException("UNSUPPORTED", "The live session can't be closed")
                 sessions.remove(sessionId)?.close()
@@ -97,6 +112,12 @@ class ReflexHost(
             }
             else -> throw HostException("BAD_REQUEST", "Unknown command '$command'")
         }
+    }
+
+    /** Headless sessions only: a running app's device is the real one. */
+    private fun deviceControl(session: HostedSession, command: String): DeviceControl {
+        if (mode is Mode.Live) throw HostException("UNSUPPORTED", "'$command' only works in headless sessions")
+        return session.device ?: throw HostException("UNSUPPORTED", "This session has no device control ('$command')")
     }
 
     private fun createSession(request: Map<String, JsonValue>, id: JsonValue): JsonValue {
@@ -109,7 +130,7 @@ class ReflexHost(
         val scope = CoroutineScope(SupervisorJob() + dispatcher)
         val context = SessionContext(sessionId, fixtures, request["deeplink"]?.stringValue, SessionEvents(sessionId, events), scope)
         val session = try { fixturesMode.factory(context) } catch (e: Exception) { scope.cancel(); throw e }
-        sessions[sessionId] = HostedSession(session.root) { session.close(); scope.cancel() }
+        sessions[sessionId] = HostedSession(session.root, session.device) { session.close(); scope.cancel() }
         return ok(id, "session" to JsonValue.Str(sessionId))
     }
 
@@ -131,9 +152,28 @@ class ReflexHost(
 /** A protocol-level error with a stable code. Session factories may throw it (e.g. `BAD_REQUEST`). */
 class HostException(val code: String, message: String, val extra: Map<String, JsonValue> = emptyMap()) : Exception(message)
 
-/** What a factory returns: how to get the root node, and how to tear the session down. */
-class HostedSession(val root: () -> IntrospectionNode, private val onClose: () -> Unit = {}) {
+/**
+ * What a factory returns: how to get the root node, the session's device control (headless sessions; null in a
+ * running app), and how to tear the session down.
+ */
+class HostedSession(
+    val root: () -> IntrospectionNode,
+    val device: DeviceControl? = null,
+    private val onClose: () -> Unit = {},
+) {
     fun close() = onClose()
+}
+
+/**
+ * Changes the world of one headless session mid-test (host commands `device.set` / `device.event`). Called on the
+ * host's core thread. Throw [HostException] (`BAD_REQUEST`) for values or events that make no sense.
+ */
+interface DeviceControl {
+    /** Merges [values] into the session's `device` values (same keys and meanings as the fixture's `device`). */
+    suspend fun set(values: Map<String, JsonValue>)
+
+    /** Delivers an event from outside the app; returns once Core has handled it. */
+    suspend fun event(type: String, payload: Map<String, JsonValue>)
 }
 
 /** What a session factory receives. [scope] runs on the host's single core thread and is cancelled on close. */
