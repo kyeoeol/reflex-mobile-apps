@@ -231,9 +231,10 @@ public struct HealthData: Codable, Sendable, Equatable {
     }
 
     /// Decodes the `health.data` JSON; throws when it isn't valid JSON or valid Health data. Empty (or
-    /// whitespace-only) text is empty data, like nothing stored.
+    /// whitespace-only) text and JSON `null` are empty data, like nothing stored.
     public init(json: String) throws {
-        guard !json.allSatisfy(\.isWhitespace) else {
+        let text = json.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text != "null" else {
             self.init()
             return
         }
