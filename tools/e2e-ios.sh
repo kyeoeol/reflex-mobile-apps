@@ -10,6 +10,7 @@
 #    E1+E2+E3+E5, E4, E6, E8+E7, E9 (dark appearance + the largest accessibility text size, restored on exit);
 # 4. relaunches the DEBUG app and runs tests/reflex-live against it (REFLEX_PLATFORMS=ios ./reflex test --live).
 #
+# Optional: E2E_ONLY=<test name substring> runs only the matching journey groups.
 # Optional: E2E_SCREENSHOT_DIR=<dir> also runs the screen tour in light and dark and saves review screenshots
 # (plus E9's) there. Never point it inside the repository.
 set -euo pipefail
@@ -99,20 +100,16 @@ xcodebuild -project "$PROJECT_DIR/AppMobile.xcodeproj" -scheme AppMobile -destin
   -derivedDataPath "$derived" build-for-testing -quiet
 
 # --- Warm up the freshly erased simulator ----------------------------------------------------------------------
-# Right after an erase the system is still busy for a minute or more (language assets, system apps asking for
-# notification permission), which made the first journey group miss the permission alert or read the reminders
-# before the app had scheduled them. Launch the app once and wait until its DEBUG socket is up (Core built, store
-# opened), then remove it again so every group still starts from a fresh install.
-app_path="$derived/Build/Products/Debug-iphonesimulator/HealthBeta.app"
-[[ -d "$app_path" ]] || die "built app not found at $app_path"
-log "Warming up the simulator"
-xcrun simctl install "$udid" "$app_path"
-xcrun simctl launch "$udid" "$BUNDLE_ID" >/dev/null
-warm_deadline=$(($(date +%s) + 180))
-until nc -z 127.0.0.1 7777 >/dev/null 2>&1; do
-  (($(date +%s) < warm_deadline)) || die "the app never came up on the simulator (no DEBUG socket on 7777 after 180 s)"
-  sleep 1
-done
+# On a freshly erased simulator the notification daemon reports the first app it authorizes as authorized but
+# rejects every request it adds ("Source is not authorized") for the rest of that session; after one full grant
+# cycle and a reinstall it works. So run one throwaway grant (SimulatorWarmUp), then remove the app: every journey
+# group below still starts from a fresh install. A real device doesn't need this.
+log "Warming up the simulator (one notification grant cycle)"
+xcodebuild -project "$PROJECT_DIR/AppMobile.xcodeproj" -scheme AppMobile -destination "id=$udid" \
+  -derivedDataPath "$derived" test-without-building -only-testing:"AppMobileUITests/SimulatorWarmUp" \
+  >"$derived/SimulatorWarmUp.log" 2>&1 || die "simulator warm-up failed (log: $derived/SimulatorWarmUp.log)"
+xcrun simctl terminate "$udid" "$BUNDLE_ID" >/dev/null 2>&1 || true
+xcrun simctl uninstall "$udid" "$BUNDLE_ID" >/dev/null 2>&1 || true
 xcrun simctl terminate "$udid" "$BUNDLE_ID" >/dev/null 2>&1 || true
 xcrun simctl uninstall "$udid" "$BUNDLE_ID" >/dev/null 2>&1 || true
 
@@ -124,6 +121,8 @@ failed=0
 # run_group <label> <test identifier> [suffix for screenshots]
 run_group() {
   local label="$1" test="$2" suffix="${3:-}" log_file started elapsed status
+  # E2E_ONLY=<substring of the test identifier> runs just the matching groups (while debugging one journey).
+  [[ -z "${E2E_ONLY:-}" || "$test" == *"$E2E_ONLY"* ]] || return 0
   log ""
   log "== $label ($test)"
   xcrun simctl terminate "$udid" "$BUNDLE_ID" >/dev/null 2>&1 || true

@@ -2,6 +2,7 @@ import AppCore
 import Foundation
 import UIKit
 import UserNotifications
+import os
 
 /// Identifiers shared by the scheduler (categories, content) and the delegate (responses).
 enum ReminderNotification {
@@ -50,6 +51,8 @@ actor UserNotificationScheduler: ReminderScheduler {
         return await permission()
     }
 
+    private static let log = Logger(subsystem: "com.beta.health", category: "reminders")
+
     func mayBeLate() async -> Bool { false }
 
     func replaceAll(_ reminders: [Reminder], openSlots: Set<String>) async {
@@ -64,7 +67,11 @@ actor UserNotificationScheduler: ReminderScheduler {
         let obsolete = scheduled.keys.filter { !desiredIds.contains($0) }
         if !obsolete.isEmpty { center.removePendingNotificationRequests(withIdentifiers: obsolete) }
         for (id, request) in desired where scheduled[id] != Self.fingerprint(of: request.content) {
-            try? await center.add(request)   // same identifier: replaces the pending one
+            do {
+                try await center.add(request)   // same identifier: replaces the pending one
+            } catch {
+                Self.log.error("Couldn't schedule \(id, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
         }
 
         let delivered = await center.deliveredNotifications()
@@ -79,6 +86,7 @@ actor UserNotificationScheduler: ReminderScheduler {
     /// Rebuilt from what the scheduler stored in `userInfo` (never from the trigger's next date), by fireAt then id.
     func pending() async -> [Reminder] {
         let requests = await center.pendingNotificationRequests()
+        defer { Self.log.debug("Pending: \(requests.count) requests") }
         let reminders = requests.compactMap { request -> Reminder? in
             let info = request.content.userInfo
             guard let id = info[ReminderNotification.Key.id] as? String,
