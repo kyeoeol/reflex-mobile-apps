@@ -15,6 +15,9 @@ targets:
     type: application
     platform: iOS
     sources: [AppMobile]
+    scheme:
+      # `./reflex e2e ios` (tools/e2e-ios.sh) runs these on the simulator; `./reflex app ios` only builds the app.
+      testTargets: [AppMobileUITests]
     dependencies:
       - package: AppCore
       # Used only by AppMobile/Debug (#if DEBUG). Release code never references it.
@@ -34,4 +37,18 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        TARGETED_DEVICE_FAMILY: "1"
+  # End-to-end journeys E1–E9 (docs/health/E2E.md): XCUITest tapping the real app and the system UI.
+  AppMobileUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [AppMobileUITests]
+    dependencies:
+      - target: AppMobile
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.beta.health.uitests
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: AppMobile
         TARGETED_DEVICE_FAMILY: "1"
