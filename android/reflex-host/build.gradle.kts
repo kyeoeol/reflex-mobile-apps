@@ -7,4 +7,8 @@ plugins {
 dependencies {
     api(project(":introspection-kit"))
     api(libs.kotlinx.coroutines.core)
+    testImplementation(kotlin("test"))
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
