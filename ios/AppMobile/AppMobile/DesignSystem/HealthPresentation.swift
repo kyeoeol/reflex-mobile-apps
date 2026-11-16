@@ -44,6 +44,10 @@ private struct PillToggleStyle: ButtonStyle {
             .overlay(Capsule().strokeBorder(border, lineWidth: 1))
             .opacity(configuration.isPressed ? 0.7 : 1)
             .contentShape(Capsule())
+            // The new value shows at once: no fade between off, pressed and on, so the settled look never reads
+            // as a half-disabled control.
+            .animation(nil, value: filled)
+            .animation(nil, value: configuration.isPressed)
     }
 
     private var border: Color {
