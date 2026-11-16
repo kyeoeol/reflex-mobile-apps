@@ -25,4 +25,8 @@ val skipApp = System.getenv("REFLEX_SKIP_APP") == "1"
 val androidSdkAvailable = System.getenv("ANDROID_HOME") != null ||
     System.getenv("ANDROID_SDK_ROOT") != null ||
     file("local.properties").let { it.exists() && it.readText().contains("sdk.dir") }
-if (!skipApp && androidSdkAvailable && file("app").isDirectory) include(":app")
+if (!skipApp && androidSdkAvailable && file("app").isDirectory) {
+    include(":app")
+    // UI tests on an emulator (./reflex e2e android); same condition, they need the app and the SDK.
+    if (file("e2e").isDirectory) include(":e2e")
+}
