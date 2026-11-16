@@ -38,9 +38,10 @@ struct Occurrence: Sendable {
         }
     }
 
-    /// The dose object screens show (`{id, medicationId, name, dose, date, time, status, takenAt, timing, …}`).
+    /// The dose object screens show (`{id, medicationId, name, dose, date, time, status, needsAction, takenAt, …}`).
     func item(now: Date) -> DoseItem {
         let status = status(now: now)
+        let canTakeNow = abs(now.timeIntervalSince(scheduledAt)) <= HealthRules.takenWindow
         let taken = log?.takenAt.flatMap(HealthTime.parseInstant)
         let timing: String? = status == .taken ? taken.map { taken in
             if taken.instant < scheduledAt.addingTimeInterval(-HealthRules.timingTolerance) { return "early" }
@@ -50,9 +51,9 @@ struct Occurrence: Sendable {
         return DoseItem(
             id: id, medicationId: medicationId,
             name: log?.name ?? medication?.name ?? "", dose: log?.dose ?? medication?.dose ?? "",
-            date: date.text, time: time, status: status.rawValue,
+            date: date.text, time: time, status: status.rawValue, needsAction: status == .due || status == .missed,
             takenAt: log?.takenAt.flatMap(HealthTime.storedTime), timing: timing,
-            canTake: status != .taken, canSkip: status != .skipped, canUndo: log != nil,
+            canTake: status != .taken && canTakeNow, canTakeAt: true, canSkip: status != .skipped, canUndo: log != nil,
             sortTime: time)
     }
 }
@@ -66,9 +67,14 @@ public struct DoseItem: Sendable, Equatable {
     public let date: String
     public let time: String?
     public let status: String
+    /// Status is `due` or `missed`.
+    public let needsAction: Bool
     public let takenAt: String?
     public let timing: String?
+    /// Not taken yet and now is within 12 hours of the dose: "take now" is offered.
     public let canTake: Bool
+    /// "Taken at another time" is offered (always, for scheduled doses).
+    public let canTakeAt: Bool
     public let canSkip: Bool
     public let canUndo: Bool
     /// `time`, or `takenAt` for as-needed entries: what lists sort on.
@@ -78,12 +84,13 @@ public struct DoseItem: Sendable, Equatable {
     init(asNeeded log: DoseLog) {
         let takenAt = log.takenAt.flatMap(HealthTime.storedTime)
         self.init(id: "log:\(log.id)", medicationId: log.medicationId, name: log.name, dose: log.dose, date: log.date,
-                  time: nil, status: DoseStatus.taken.rawValue, takenAt: takenAt, timing: nil,
-                  canTake: false, canSkip: false, canUndo: true, sortTime: takenAt ?? "")
+                  time: nil, status: DoseStatus.taken.rawValue, needsAction: false, takenAt: takenAt, timing: nil,
+                  canTake: false, canTakeAt: false, canSkip: false, canUndo: true, sortTime: takenAt ?? "")
     }
 
     init(id: String, medicationId: String, name: String, dose: String, date: String, time: String?, status: String,
-         takenAt: String?, timing: String?, canTake: Bool, canSkip: Bool, canUndo: Bool, sortTime: String) {
+         needsAction: Bool, takenAt: String?, timing: String?, canTake: Bool, canTakeAt: Bool, canSkip: Bool,
+         canUndo: Bool, sortTime: String) {
         self.id = id
         self.medicationId = medicationId
         self.name = name
@@ -91,9 +98,11 @@ public struct DoseItem: Sendable, Equatable {
         self.date = date
         self.time = time
         self.status = status
+        self.needsAction = needsAction
         self.takenAt = takenAt
         self.timing = timing
         self.canTake = canTake
+        self.canTakeAt = canTakeAt
         self.canSkip = canSkip
         self.canUndo = canUndo
         self.sortTime = sortTime
@@ -107,7 +116,8 @@ enum DoseOutcome: Equatable, Sendable {
     case rejected(String)
 }
 
-/// What the user answered on a notification (deep link `reminder/<slot>[/taken|/skipped|/snooze]`).
+/// What the user answered on a notification: a tap (`open`) or one of its buttons. Reaches Core only through
+/// `AppRoot.handleReminderResponse(slot:action:)`, never through a URL.
 public enum ReminderResponse: String, Sendable {
     case open, taken, skipped, snooze
 }
@@ -148,10 +158,23 @@ enum HealthRules {
         return (String(doseId[..<at]), slot.date, slot.time)
     }
 
-    /// Case-insensitive name order, then the tie-breaker.
+    /// The name key: lowercased (Unicode default case mapping), as a sequence of code points. Names are ordered by
+    /// comparing keys code point by code point (never `String <` or a localized comparison) and are duplicates when
+    /// their trimmed keys are equal, exactly like Android.
+    static func nameKey(_ name: String) -> [UInt32] { name.lowercased().unicodeScalars.map(\.value) }
+
+    /// Trimmed of Unicode whitespace (the duplicate check, and what the editor saves).
+    static func trimmed(_ name: String) -> String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// Code point order of two strings (ids, the name tie-breaker).
+    static func precedes(_ lhs: String, _ rhs: String) -> Bool {
+        lhs.unicodeScalars.map(\.value).lexicographicallyPrecedes(rhs.unicodeScalars.map(\.value))
+    }
+
+    /// By name key, then by id.
     static func byName(_ lhs: String, _ lhsId: String, _ rhs: String, _ rhsId: String) -> Bool {
-        let (l, r) = (lhs.lowercased(), rhs.lowercased())
-        return l != r ? l < r : lhsId < rhsId
+        let (l, r) = (nameKey(lhs), nameKey(rhs))
+        return l != r ? l.lexicographicallyPrecedes(r) : precedes(lhsId, rhsId)
     }
 
     /// `"<taken> of <scheduled> taken"`, or nil when nothing is scheduled.
@@ -193,7 +216,17 @@ extension HealthData {
                 log: dayLogs.first { $0.medicationId == medicationId && $0.time == time }))
         }
         for medication in medications where medication.isScheduled(on: date) {
-            for time in medication.times(on: date) { add(medication.id, medication, time) }
+            // A version created during its own first day doesn't produce doses that were already missed then.
+            let version = medication.schedule(on: date)
+            let createdAt = version?.createdAt.flatMap(HealthTime.parseInstant)?.instant
+            let createdToday = version?.from == day && createdAt.map { HealthTime.localDate(of: $0, in: zone) == date } == true
+            for time in medication.times(on: date) {
+                if createdToday, let createdAt, let minutes = HealthTime.minutes(ofTime: time),
+                   HealthTime.resolve(date, secondsOfDay: minutes * 60, in: zone).addingTimeInterval(HealthRules.missedAfter) <= createdAt {
+                    continue
+                }
+                add(medication.id, medication, time)
+            }
         }
         for log in dayLogs { add(log.medicationId, medication(log.medicationId), log.time!) }
         return result
@@ -216,9 +249,14 @@ extension HealthData {
         logs.filter { $0.time == nil && $0.date == date.text }
     }
 
-    /// Some active medication has dose times today (the condition for the reminder banner).
+    /// Some active medication has dose times (the condition for the reminder banner).
     func hasActiveScheduledMedication(today: LocalDate) -> Bool {
-        medications.contains { $0.status(today: today) == .active && !$0.times(on: today).isEmpty }
+        medications.contains { $0.status(today: today) == .active && !$0.latestTimes.isEmpty }
+    }
+
+    /// Medication `id` has a log dated `date` (an edit then changes the schedule from the next day on).
+    func hasLog(medicationId: String, on date: LocalDate) -> Bool {
+        logs.contains { $0.medicationId == medicationId && $0.date == date.text }
     }
 }
 
@@ -302,34 +340,37 @@ extension HealthData {
         return true
     }
 
-    /// Adds or updates a medication; returns its id. A new medication starts with one schedule version from today.
-    /// Editing changed times/weekdays adds a version from today (replacing one that already starts today).
-    /// As-needed medications are saved with no schedule.
-    mutating func save(_ draft: MedicationDraft, today: LocalDate) -> String {
-        let version = MedicationSchedule(from: today.text, times: draft.times.sorted(), weekdays: draft.weekdays.sorted())
-        guard let id = draft.id, let index = medications.firstIndex(where: { $0.id == id }) else {
+    /// Adds or updates a medication; returns its id, or nil for an edit of a medication that no longer exists.
+    /// - A new medication gets one version `{from: startDate, createdAt: now}` (none when as-needed).
+    /// - An edit whose times/weekdays differ from the latest version adds a version with `createdAt: now`, from today,
+    ///   or from tomorrow when the medication already has a log dated today (so a dose logged today isn't followed by
+    ///   a second one); a version that already starts on that day is replaced. Whether it is as-needed never changes.
+    mutating func save(_ draft: MedicationDraft, clock: HealthNow) -> String? {
+        let (times, weekdays) = (Array(Set(draft.times)).sorted(), Array(Set(draft.weekdays)).sorted())
+        let createdAt = HealthTime.format(clock.now, in: clock.zone)
+        guard let id = draft.id else {
             let medication = Medication(
                 id: HealthRules.newId(), name: draft.name, kind: draft.kind, dose: draft.dose, notes: draft.notes,
                 asNeeded: draft.asNeeded, startDate: draft.startDate, endDate: draft.endDate,
-                schedules: draft.asNeeded ? [] : [version], archived: [])
+                schedules: draft.asNeeded ? []
+                    : [MedicationSchedule(from: draft.startDate, times: times, weekdays: weekdays, createdAt: createdAt)],
+                archived: [])
             medications.append(medication)
             return medication.id
         }
+        guard let index = medications.firstIndex(where: { $0.id == id }) else { return nil }
         var medication = medications[index]
-        let changed = medication.asNeeded || medication.times(on: today) != version.times
-            || medication.weekdays(on: today) != version.weekdays
         medication.name = draft.name
         medication.kind = draft.kind
         medication.dose = draft.dose
         medication.notes = draft.notes
-        medication.asNeeded = draft.asNeeded
         medication.startDate = draft.startDate
         medication.endDate = draft.endDate
-        if draft.asNeeded {
-            medication.schedules = []
-        } else if changed {
-            medication.schedules.removeAll { $0.from == today.text }
-            medication.schedules.append(version)
+        if !medication.asNeeded, times != medication.latestTimes || weekdays != medication.latestWeekdays {
+            let today = clock.today
+            let from = (hasLog(medicationId: id, on: today) ? today.adding(days: 1) : today).text
+            medication.schedules.removeAll { $0.from == from }
+            medication.schedules.append(MedicationSchedule(from: from, times: times, weekdays: weekdays, createdAt: createdAt))
         }
         medications[index] = medication
         return id
@@ -341,15 +382,24 @@ extension HealthData {
         return true
     }
 
-    /// Closes the open archive period with `to` = yesterday, dropping it when that is before its `from`.
-    mutating func restore(medicationId: String, today: LocalDate) -> Bool {
+    /// Closes the open archive period with `to` = yesterday, dropping it when that is before its `from`, and appends
+    /// a version from today with the latest times/weekdays and `createdAt: now` (doses already missed today stay
+    /// away). As-needed medications have no schedule to append to.
+    mutating func restore(medicationId: String, clock: HealthNow) -> Bool {
         guard let index = medications.firstIndex(where: { $0.id == medicationId }),
               let open = medications[index].archived.firstIndex(where: { $0.to == nil }) else { return false }
+        let today = clock.today
         let yesterday = today.adding(days: -1).text
         if yesterday < medications[index].archived[open].from {
             medications[index].archived.remove(at: open)
         } else {
             medications[index].archived[open].to = yesterday
+        }
+        let medication = medications[index]
+        if !medication.asNeeded, medication.latestSchedule != nil {
+            medications[index].schedules.append(MedicationSchedule(
+                from: today.text, times: medication.latestTimes, weekdays: medication.latestWeekdays,
+                createdAt: HealthTime.format(clock.now, in: clock.zone)))
         }
         return true
     }
