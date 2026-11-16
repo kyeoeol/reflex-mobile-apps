@@ -5,17 +5,21 @@ import IntrospectionKit
 ///
 ///     // Mobile
 ///     Core(storage: KeychainStorage(), transport: URLSessionTransport(endpoint: …),
-///          device: SystemDeviceCapabilities(), flags: LocalFeatureFlags())
+///          device: SystemDeviceCapabilities(), flags: LocalFeatureFlags(),
+///          clock: SystemClock(), reminders: NotificationReminderScheduler(), health: SwiftDataHealthRepository(…))
 ///     // CLI: same core, no platform/UI
-///     Core(storage: InMemoryStorage(…), transport: FixtureTransport(…), device: FixtureDevice(…), flags: FixtureFlags(…))
+///     Core(storage: InMemoryStorage(…), transport: FixtureTransport(…), device: FixtureDevice(…), flags: FixtureFlags(…),
+///          clock: FixtureClock(…), reminders: FixtureReminderScheduler(…), health: FixtureHealthRepository(…))
 ///
 /// Plain dependency inversion: no DI framework.
 @MainActor
 public final class Core {
     public let app: AppRoot
 
-    public init(storage: any Storage, transport: any GraphQLTransport, device: DeviceCapabilities, flags: FeatureFlags) {
-        let services = Services(client: GraphQLClient(transport: transport), storage: storage, device: device, flags: flags)
+    public init(storage: any Storage, transport: any GraphQLTransport, device: DeviceCapabilities, flags: FeatureFlags,
+                clock: any Clock, reminders: any ReminderScheduler, health: any HealthRepository) {
+        let services = Services(client: GraphQLClient(transport: transport), storage: storage, device: device, flags: flags,
+                                clock: clock, reminderScheduler: reminders, healthRepository: health)
         app = AppRoot(services: services)
     }
 }
@@ -27,6 +31,9 @@ public struct Services {
     public let storage: any Storage
     public let device: DeviceCapabilities
     public let flags: FeatureFlags
+    public let clock: any Clock
+    public let reminderScheduler: any ReminderScheduler
+    public let healthRepository: any HealthRepository
 }
 
 extension Core: IntrospectionProviding {
