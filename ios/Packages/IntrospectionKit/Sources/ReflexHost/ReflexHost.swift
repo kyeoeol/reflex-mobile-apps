@@ -8,12 +8,17 @@ import os
 /// Requests:  {"id":1,"cmd":"session.create","fixtures":["Sample.default"],"deeplink":null}
 ///            {"id":2,"session":"s1","cmd":"ls" | "tree" | "session.close"}
 ///            {"id":3,"session":"s1","cmd":"do","action":"SetCount","payload":{"count":40}}
+///            {"id":4,"session":"s1","cmd":"device.set","values":{"now":"2026-11-16T10:00:00"}}           (headless)
+///            {"id":5,"session":"s1","cmd":"device.event","type":"openURL","payload":{"url":"…"}}         (headless)
 /// Responses: {"id":1,"ok":true,"session":"s1"} · {"id":2,"ok":true,"node":{...}} · {"id":3,"ok":true}
 ///            {"id":3,"ok":false,"error":{"code":"ACTION_NOT_AVAILABLE","message":"...","available":[...]}}
 /// Events:    {"event":"ready","platform":"ios","protocol":1} · network_violation · fixture_miss · log
+///
+/// Requests are handled one at a time, in the order they arrive: a request that awaits (`device.event` replies
+/// only once the app has fully handled the event) holds back the ones after it.
 @MainActor
 public final class ReflexHost {
-    public typealias SessionFactory = @MainActor (SessionContext) throws -> any IntrospectionProviding
+    public typealias SessionFactory = @MainActor (SessionContext) throws -> HeadlessSession
 
     public enum Mode {
         /// Headless: every `session.create` builds a fresh Core from fixtures.
@@ -28,52 +33,90 @@ public final class ReflexHost {
     public let platform: String
     public let events: EventSink
     private let mode: Mode
-    private var sessions: [String: any IntrospectionProviding] = [:]
+    private var sessions: [String: HeadlessSession] = [:]
     private var nextSession = 1
+    /// The request being handled (and, through it, every earlier one).
+    private var tail: Task<Void, Never>?
 
     /// Pass `events` when the root was built before the host (live mode) and already emits into a sink.
     public init(platform: String, mode: Mode, events: EventSink = EventSink()) {
         self.platform = platform
         self.mode = mode
         self.events = events
-        if case .live(let root) = mode { sessions[ReflexHost.liveSessionID] = root }
+        if case .live(let root) = mode { sessions[ReflexHost.liveSessionID] = HeadlessSession(root: root) }
     }
 
     public var readyEvent: String {
         JSONValue.object(["event": "ready", "platform": .string(platform), "protocol": .number(ReflexHost.protocolVersion)]).serialized()
     }
 
-    public func handle(_ line: String, reply: (String) -> Void) {
-        guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+    /// Queues one request line; `reply` receives its response once every earlier request has been answered.
+    public func handle(_ line: String, reply: @escaping @Sendable (String) -> Void) {
+        let previous = tail
+        tail = Task {
+            await previous?.value
+            if let response = await self.response(to: line) { reply(response) }
+        }
+    }
+
+    /// Returns once every request queued so far has been answered.
+    public func drain() async {
+        while let task = tail {
+            await task.value
+            if tail == task { tail = nil }
+        }
+    }
+
+    /// The response line for one request line (nil for a blank line).
+    func response(to line: String) async -> String? {
+        guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
         let request: JSONObject
         do {
             guard let object = try JSONParser.parse(line).objectValue else { throw HostError("BAD_REQUEST", "request must be a JSON object") }
             request = object
         } catch let error as HostError {
-            reply(Self.failure(id: .null, error)); return
+            return Self.failure(id: .null, error)
         } catch {
-            reply(Self.failure(id: .null, HostError("BAD_REQUEST", "\(error)"))); return
+            return Self.failure(id: .null, HostError("BAD_REQUEST", "\(error)"))
         }
         let id = request["id"] ?? .null
         do {
-            reply(try respond(to: request, id: id).serialized())
+            return try await respond(to: request, id: id).serialized()
         } catch let error as HostError {
-            reply(Self.failure(id: id, error))
+            return Self.failure(id: id, error)
         } catch let error as FixtureError {
-            reply(Self.failure(id: id, HostError(error.code, error.description)))
+            return Self.failure(id: id, HostError(error.code, error.description))
         } catch {
-            reply(Self.failure(id: id, HostError("INTERNAL", "\(error)")))
+            return Self.failure(id: id, HostError("INTERNAL", "\(error)"))
         }
     }
 
-    private func respond(to request: JSONObject, id: JSONValue) throws -> JSONValue {
+    private func respond(to request: JSONObject, id: JSONValue) async throws -> JSONValue {
         let command = request["cmd"]?.stringValue ?? ""
         if command == "session.create" { return try createSession(request, id: id) }
 
         let sessionID = try sessionID(of: request)
-        guard let root = sessions[sessionID] else { throw HostError("UNKNOWN_SESSION", "No session '\(sessionID)'") }
+        guard let session = sessions[sessionID] else { throw HostError("UNKNOWN_SESSION", "No session '\(sessionID)'") }
         events.activeSession = sessionID
-        let resolution = Resolution.resolve(root.introspectionNode)
+
+        switch command {
+        case "device.set":
+            let device = try deviceControl(session, command)
+            guard let values = request["values"]?.objectValue else { throw HostError("BAD_REQUEST", "'device.set' needs a 'values' object") }
+            try await device.set(values)
+            return ["id": id, "ok": true]
+        case "device.event":
+            let device = try deviceControl(session, command)
+            guard let type = request["type"]?.stringValue else { throw HostError("BAD_REQUEST", "'device.event' needs a 'type'") }
+            let payload = request["payload"] ?? .null
+            guard payload.isNull || payload.objectValue != nil else { throw HostError("BAD_REQUEST", "'payload' must be an object") }
+            try await device.event(type: type, payload: payload.objectValue ?? JSONObject())
+            return ["id": id, "ok": true]
+        default:
+            break
+        }
+
+        let resolution = Resolution.resolve(session.root.introspectionNode)
 
         switch command {
         case "ls":
@@ -103,6 +146,14 @@ public final class ReflexHost {
         }
     }
 
+    /// Live sessions (a running app) can't have their world changed: `UNSUPPORTED`.
+    private func deviceControl(_ session: HeadlessSession, _ command: String) throws -> any DeviceControl {
+        guard case .fixtures = mode, let device = session.device else {
+            throw HostError("UNSUPPORTED", "'\(command)' is only supported in headless sessions")
+        }
+        return device
+    }
+
     private func sessionID(of request: JSONObject) throws -> String {
         if case .live = mode { return ReflexHost.liveSessionID }
         guard let id = request["session"]?.stringValue else { throw HostError("BAD_REQUEST", "Missing 'session'") }
@@ -129,6 +180,28 @@ public final class ReflexHost {
         for (key, value) in error.extra { body[key] = value }
         return JSONValue.object(["id": id, "ok": false, "error": .object(body)]).serialized()
     }
+}
+
+/// What a headless session factory builds: the root node, and the object that changes the session's world
+/// (`device.set`, `device.event`). Without one, both commands answer `UNSUPPORTED`.
+@MainActor
+public struct HeadlessSession {
+    public let root: any IntrospectionProviding
+    public let device: (any DeviceControl)?
+
+    public init(root: any IntrospectionProviding, device: (any DeviceControl)? = nil) {
+        self.root = root
+        self.device = device
+    }
+}
+
+/// Changes one headless session's world mid-test. Throw `HostError` (`BAD_REQUEST`) for malformed input; never crash.
+@MainActor
+public protocol DeviceControl: AnyObject {
+    /// `device.set`: merges `values` into the session's `device` values (same keys and meanings as the fixture).
+    func set(_ values: JSONObject) async throws
+    /// `device.event`: delivers an event from outside the app; returns once the app has fully handled it.
+    func event(type: String, payload: JSONObject) async throws
 }
 
 /// A protocol-level error with a stable code. Session factories may throw it (e.g. `BAD_REQUEST` for an unknown deep link).

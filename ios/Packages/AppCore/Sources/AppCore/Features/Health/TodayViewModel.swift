@@ -8,6 +8,8 @@ public final class TodayViewModel: ViewModel {
         public let key: String
         public let date: String
         public let time: String
+        /// `time` for today, `"Yesterday, <time>"` for the day before, else `"<date>, <time>"`.
+        public let label: String
         public let doses: [DoseItem]
     }
 
@@ -18,6 +20,12 @@ public final class TodayViewModel: ViewModel {
         public let takenToday: Int
         public let lastTakenAt: String?
         public let summary: String
+        public let canUndo: Bool
+    }
+
+    /// Why Today shows its message (the view picks an illustration by it).
+    public enum MessageKind: String, Sendable {
+        case loadError, saveError, noMedications, nothingToday, allDone
     }
 
     @MainActor @Observable public final class State {
@@ -27,7 +35,11 @@ public final class TodayViewModel: ViewModel {
         public fileprivate(set) var takenCount = 0
         public fileprivate(set) var scheduledCount = 0
         public fileprivate(set) var message: String?
+        /// `loadError`, `saveError`, `noMedications`, `nothingToday`, `allDone` (see `MessageKind`), or nil.
+        public fileprivate(set) var messageKind: String?
         public fileprivate(set) var reminderBanner: String?
+        /// The banner button's title.
+        public fileprivate(set) var reminderBannerAction: String?
         public fileprivate(set) var groups: [DoseGroup] = []
         public fileprivate(set) var asNeeded: [AsNeededItem] = []
         public fileprivate(set) var doseError: String?
@@ -44,6 +56,7 @@ public final class TodayViewModel: ViewModel {
         case openReminders
         case addMedication
         case openMedication(id: String)
+        case retry
     }
 
     public enum Message {
@@ -102,6 +115,8 @@ public final class TodayViewModel: ViewModel {
             navigation?.showMedicationDetail(id: id)
         case .viewAction(.openMedication):
             break   // unknown medication: no-op
+        case .viewAction(.retry):
+            store.retry()
         case .storeChanged(let snapshot):
             self.snapshot = snapshot
             let (data, now, zone, today) = (snapshot.data, snapshot.now, snapshot.zone, snapshot.today)
@@ -121,27 +136,43 @@ public final class TodayViewModel: ViewModel {
             state.progressLabel = HealthRules.progressLabel(todays)
             state.takenCount = taken
             state.scheduledCount = todays.count
-            state.message = switch snapshot.phase {
-            case .loading: nil
-            case .failed: "Couldn't load your data"
-            case .loaded where !hasActive: "No medications yet"
-            case .loaded where todays.isEmpty: "Nothing scheduled today"
-            case .loaded where todays.allSatisfy({ $0.log != nil }): "All done for today"
-            case .loaded: nil
-            }
-            state.reminderBanner = switch (data.hasActiveScheduledMedication(today: today), snapshot.permission, snapshot.mayBeLate) {
-            case (false, _, _): nil
-            case (true, .denied, _): "Reminders are off"
-            case (true, .notDetermined, _): "Turn on reminders to get notified"
-            case (true, .authorized, true): "Reminders may arrive a few minutes late"
-            case (true, .authorized, false): nil
-            }
-            state.groups = slots.keys.sorted().map { slot in
+            let groups = slots.keys.sorted().map { slot in
                 let occurrences = slots[slot]!
+                let (date, time) = (occurrences[0].date, occurrences[0].time)
                 let doses = occurrences.map { $0.item(now: now) }
                     .sorted { HealthRules.byName($0.name, $0.medicationId, $1.name, $1.medicationId) }
-                return DoseGroup(key: slot, date: occurrences[0].date.text, time: occurrences[0].time, doses: doses)
+                let label = date == today ? time
+                    : date == today.adding(days: -1) ? "Yesterday, \(time)" : "\(date.text), \(time)"
+                return DoseGroup(key: slot, date: date.text, time: time, label: label, doses: doses)
             }
+            let kind: MessageKind? = switch snapshot.phase {
+            case .loading: nil
+            case .failed: .loadError
+            case .loaded where snapshot.saveError: .saveError
+            case .loaded where !hasActive: .noMedications
+            case .loaded where groups.isEmpty: .nothingToday
+            case .loaded where shown.allSatisfy({ $0.log != nil }): .allDone
+            case .loaded: nil
+            }
+            state.messageKind = kind?.rawValue
+            state.message = switch kind {
+            case .loadError?: "Couldn't load your data"
+            case .saveError?: "Couldn't save your changes"
+            case .noMedications?: "No medications yet"
+            case .nothingToday?: "Nothing scheduled today"
+            case .allDone?: "All done for today"
+            case nil: nil
+            }
+            let banner: (String, String)? = switch (data.hasActiveScheduledMedication(today: today), snapshot.permission, snapshot.mayBeLate) {
+            case (false, _, _): nil
+            case (true, .denied, _): ("Reminders are off", "Open Settings")
+            case (true, .notDetermined, _): ("Turn on reminders to get notified", "Turn on reminders")
+            case (true, .authorized, true): ("Reminders may arrive a few minutes late", "Open Settings")
+            case (true, .authorized, false): nil
+            }
+            state.reminderBanner = banner?.0
+            state.reminderBannerAction = banner?.1
+            state.groups = groups
             let asNeededLogs = data.asNeededLogs(on: today)
             state.asNeeded = data.medications
                 .filter { $0.asNeeded && $0.status(today: today) == .active }
@@ -160,7 +191,8 @@ public final class TodayViewModel: ViewModel {
                     default: "Taken \(logs.count) times today, last at \(last ?? "")"
                     }
                     return AsNeededItem(medicationId: medication.id, name: medication.name, dose: medication.dose,
-                                        takenToday: logs.count, lastTakenAt: last, summary: summary)
+                                        takenToday: logs.count, lastTakenAt: last, summary: summary,
+                                        canUndo: !logs.isEmpty)
                 }
         }
     }

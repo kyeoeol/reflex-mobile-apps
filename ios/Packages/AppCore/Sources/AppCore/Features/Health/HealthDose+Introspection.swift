@@ -3,7 +3,7 @@ import IntrospectionKit
 // Shared by the Health nodes (Today, History, MedicationDetail): the dose object and the dose action inputs.
 
 extension DoseItem {
-    /// `{id, medicationId, name, dose, date, time, status, takenAt, timing, canTake, canSkip, canUndo}`
+    /// `{id, medicationId, name, dose, date, time, status, needsAction, takenAt, timing, canTake, canTakeAt, canSkip, canUndo}`
     var introspectionJSON: JSONValue {
         [
             "id": .string(id),
@@ -13,9 +13,11 @@ extension DoseItem {
             "date": .string(date),
             "time": JSONValue(time),
             "status": .string(status),
+            "needsAction": .bool(needsAction),
             "takenAt": JSONValue(takenAt),
             "timing": JSONValue(timing),
             "canTake": .bool(canTake),
+            "canTakeAt": .bool(canTakeAt),
             "canSkip": .bool(canSkip),
             "canUndo": .bool(canUndo),
         ]

@@ -19,6 +19,7 @@ extension MedicationDetailViewModel: IntrospectionProviding {
                 "endDate": JSONValue(viewModel.state.endDate),
                 "status": .string(viewModel.state.status),
                 "adherenceLabel": .string(viewModel.state.adherenceLabel),
+                "adherenceCaption": JSONValue(viewModel.state.adherenceCaption),
                 "takenCount": .number(viewModel.state.takenCount),
                 "skippedCount": .number(viewModel.state.skippedCount),
                 "missedCount": .number(viewModel.state.missedCount),

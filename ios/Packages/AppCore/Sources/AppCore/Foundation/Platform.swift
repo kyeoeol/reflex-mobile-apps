@@ -47,13 +47,14 @@ public enum GraphQLTransportError: Error, Sendable, Equatable {
 
 // MARK: - Health Beta edges (docs/health/CONTRACT.md §2)
 
-/// Time. The app reads the system clock; the CLI a fixed fixture time.
+/// Time. The app reads the system clock; the CLI the fixture's `device.now` / `device.timeZone`.
 @MainActor
 public protocol Clock: AnyObject {
     var now: Date { get }
     /// The device's current time zone (schedule times are floating local wall-clock times).
     var timeZone: TimeZone { get }
-    /// Yields on minute ticks, significant time changes, time zone changes and app foreground. Never in fixtures.
+    /// Yields on minute ticks, significant time changes, time zone changes and app foreground. In the CLI: once
+    /// after every `device.set` test command.
     var changes: AsyncStream<Void> { get }
 }
 
@@ -94,8 +95,10 @@ public protocol ReminderScheduler: Sendable {
     func requestPermission() async -> NotificationPermission
     /// Android without exact alarms; always false on iOS.
     func mayBeLate() async -> Bool
-    /// pending := reminders (diff by id).
-    func replaceAll(_ reminders: [Reminder]) async
+    /// pending := reminders. Items whose id is new or whose fireAt/title/body changed are (re)scheduled, items no
+    /// longer present are cancelled; delivered notifications whose slot isn't in `openSlots` are removed (open
+    /// slot = at least one unlogged dose and now < T + 120 min). One call at a time, in order.
+    func replaceAll(_ reminders: [Reminder], openSlots: Set<String>) async
     /// What is pending now, in the order given to `replaceAll`.
     func pending() async -> [Reminder]
     func openSettings() async

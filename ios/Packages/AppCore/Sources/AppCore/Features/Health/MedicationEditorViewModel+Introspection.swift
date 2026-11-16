@@ -26,6 +26,8 @@ extension MedicationEditorViewModel: IntrospectionProviding {
                 "datesError": JSONValue(viewModel.state.datesError),
                 "timeError": JSONValue(viewModel.state.timeError),
                 "canAddTime": .bool(viewModel.state.canAddTime),
+                "canChangeAsNeeded": .bool(viewModel.state.canChangeAsNeeded),
+                "isValid": .bool(viewModel.state.isValid),
                 "canSave": .bool(viewModel.state.canSave),
                 "isSaving": .bool(viewModel.state.isSaving),
             ]

@@ -29,7 +29,7 @@ MainActor.assumeIsolated {
                                          fixtures: try FixtureSet.load(names: values(of: "--fixture"), root: fixturesRoot),
                                          deeplink: values(of: "--deeplink").first,
                                          events: SessionEvents(sessionID: ReflexHost.liveSessionID, sink: events))
-            let host = ReflexHost(platform: "ios", mode: .live(root: try makeSession(context)), events: events)
+            let host = ReflexHost(platform: "ios", mode: .live(root: try makeSession(context).root), events: events)
             let server = try ReflexSocketServer(host: host, port: port)
             server.start()
             FileHandle.standardError.write(Data("Serving iOS core on 127.0.0.1:\(port) (live protocol)\n".utf8))
@@ -44,23 +44,30 @@ MainActor.assumeIsolated {
     StdioTransport.run(host)
 }
 
-/// One session = one fresh Core built from fixtures. Nothing is shared between sessions.
+/// One session = one fresh Core built from fixtures, plus the object that changes its world mid-test
+/// (`device.set`, `device.event`). Nothing is shared between sessions.
 @MainActor
-func makeSession(_ context: SessionContext) throws -> any IntrospectionProviding {
+func makeSession(_ context: SessionContext) throws -> HeadlessSession {
     let fixtures = context.fixtures
+    let health = try HealthDeviceValues(fixtures.device, errorCode: "INVALID_FIXTURE")
+    let clock = FixtureClock(health)
+    let scheduler = FixtureReminderScheduler(health)
+    let repository = FixtureHealthRepository(fixtures.storage, health)
     let core = Core(
         storage: InMemoryStorage(fixtures.storage.reduce(into: [:]) { $0[$1.key] = $1.value.stringValue }),
         transport: FixtureTransport(matcher: GraphQLFixtureMatcher(fixtures.graphql), events: context.events),
         device: FixtureDevice(fixtures.device),
         flags: FixtureFlags(fixtures.flags),
-        clock: try FixtureClock(fixtures.device),
-        reminders: try FixtureReminderScheduler(fixtures.device),
-        health: FixtureHealthRepository(fixtures.storage)
+        clock: clock,
+        reminders: scheduler,
+        health: repository
     )
     if let deeplink = context.deeplink {
         guard let url = URL(string: deeplink), core.app.open(url) else {
             throw HostError("BAD_REQUEST", "Deep link '\(deeplink)' doesn't route anywhere")
         }
     }
-    return core
+    let device = FixtureDeviceControl(values: fixtures.device, app: core.app, clock: clock, scheduler: scheduler,
+                                      repository: repository)
+    return HeadlessSession(root: core, device: device)
 }
