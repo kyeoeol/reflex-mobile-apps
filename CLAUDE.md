@@ -143,9 +143,13 @@ Keep this list current: if you change one of these, update it in the same change
 what the skills point to as the canonical example. **When the first real feature lands, delete it** (the
 `reflex-feature` skill lists every file) and make the real first screen the root route in `AppRoot`.
 
-## Placeholders to set when the product is decided
+## Product identity (non-store beta)
 
-Bundle id / applicationId `app.reflex.mobile` (`ios/AppMobile/project.yml`, `android/app/build.gradle.kts`), app
-name, GraphQL endpoint (`AppConfig.graphQLEndpoint`, `BuildConfig.GRAPHQL_ENDPOINT`), deep link scheme (routing in
-`AppRoot.open` is scheme-agnostic), real persistence for secrets on Android (Keystore), remote feature flags.
-Kotlin packages (`app.reflex.*`) don't need to change.
+The product is **Health Beta**: medication/supplement logging with local reminders. Bundle id / applicationId
+`com.beta.health` (`ios/AppMobile/project.yml`, `android/app/build.gradle.kts`), display name "Health Beta". It is not
+shipped to a store. This repo is public: never commit a signing team, provisioning profile, keystore, personal
+identifier, email, or any other personal or sensitive data. Kotlin packages (`app.reflex.*`) don't need to change.
+
+Still placeholders: GraphQL endpoint (`AppConfig.graphQLEndpoint`, `BuildConfig.GRAPHQL_ENDPOINT`; unused by Health
+Beta, which is local-only), deep link scheme (routing in `AppRoot.open` is scheme-agnostic), real persistence for
+secrets on Android (Keystore), remote feature flags.

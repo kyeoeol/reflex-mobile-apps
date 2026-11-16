@@ -22,9 +22,10 @@ targets:
         product: ReflexHost
     settings:
       base:
-        # Placeholder identifier: change it when the product is decided.
-        PRODUCT_BUNDLE_IDENTIFIER: app.reflex.mobile
-        PRODUCT_NAME: Reflex
+        # Non-store beta identifier: never put a personal/team identifier or signing team here (public repo).
+        PRODUCT_BUNDLE_IDENTIFIER: com.beta.health
+        PRODUCT_NAME: HealthBeta
+        INFOPLIST_KEY_CFBundleDisplayName: Health Beta
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "6.0"

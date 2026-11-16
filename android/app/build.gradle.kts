@@ -10,8 +10,8 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        // Placeholder identifier: change it when the product is decided.
-        applicationId = "app.reflex.mobile"
+        // Non-store beta identifier (public repo: no personal/team identifiers or signing config here).
+        applicationId = "com.beta.health"
         minSdk = 26
         targetSdk = 37
         versionCode = 1
