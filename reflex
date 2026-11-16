@@ -12,6 +12,8 @@
 #                                   Serve one fixture-built core over the live socket protocol (no simulator needed)
 #   ./reflex app <ios|android>      Build the Mobile app shells (SwiftUI via XcodeGen / Compose via Gradle)
 #   ./reflex ci                     check + unit + test: the merge gate
+#   ./reflex e2e <ios|android>      End-to-end on a simulator/emulator: UI tests that tap the real app, then the
+#                                   tests/reflex-live journeys against the running DEBUG build (tools/e2e-<platform>.sh)
 #
 # Every command except `setup` requires .reflex/toolchain.local.json. If it is missing, setup runs first.
 set -euo pipefail
@@ -273,6 +275,19 @@ cmd_app() {
   esac
 }
 
+# Real UI on a simulator / emulator: slow and device-bound, so it's its own command, not part of `ci`.
+# Each platform script boots (or creates) its device, installs the app fresh, runs the UI tests, then runs
+# tests/reflex-live against the running DEBUG build. See docs/health/E2E.md.
+cmd_e2e() {
+  case "${1:-}" in
+    ios | android)
+      local script="$ROOT/tools/e2e-$1.sh"
+      [[ -x "$script" ]] || die "$1 end-to-end runner missing: tools/e2e-$1.sh"
+      ROOT="$ROOT" JAVA_HOME="${JAVA_HOME:-}" ANDROID_HOME="${ANDROID_HOME:-}" "$script" "${@:2}" ;;
+    *) die "usage: reflex e2e <ios|android>" ;;
+  esac
+}
+
 cmd_ci() {
   cmd_check
   cmd_unit
@@ -291,6 +306,7 @@ case "$command" in
   serve) require_toolchain; cmd_serve "$@" ;;
   app) require_toolchain; cmd_app "$@" ;;
   ci) require_toolchain; cmd_ci ;;
-  help | -h | --help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//' ;;
+  e2e) require_toolchain; cmd_e2e "$@" ;;
+  help | -h | --help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) die "unknown command '$command' (try ./reflex help)" ;;
 esac

@@ -9,6 +9,7 @@ import {
   PLATFORM_LABEL,
   type Platform,
   ReflexProtocolError,
+  type Request,
 } from "./protocol";
 
 export type Target = "headless" | "live";
@@ -56,6 +57,16 @@ export interface BehaviorSession extends AsyncDisposable {
   precondition(name: string, expectation?: (node: NodeSnapshot) => void): Promise<NodeSnapshot>;
   /** Runs one action (exactly like a user interaction), then polls until `expectation` passes. */
   do(step: Step): Promise<NodeSnapshot>;
+  /**
+   * Headless only. Changes the session's `device` values the way the world changes them: time passes, the user
+   * changes a system setting. Same keys as the fixture's `device` section. Follow it with `precondition`/`do`.
+   */
+  device(values: Record<string, unknown>): Promise<void>;
+  /**
+   * Headless only. Delivers an event from outside the app, e.g. `event("notificationResponse", {slot, action})`.
+   * Follow it with `precondition`/`do` to wait for its effect.
+   */
+  event(type: string, payload?: Record<string, unknown>): Promise<void>;
 }
 
 /**
@@ -146,6 +157,28 @@ class Session implements BehaviorSession {
       throw this.failure(label, new ReflexProtocolError(response.error), node, 0, 0);
     }
     return this.poll(step.action, step.expectation, label);
+  }
+
+  async device(values: Record<string, unknown>): Promise<void> {
+    const session = await this.start();
+    await this.command(`device(${JSON.stringify(values)})`, { cmd: "device.set", session, values });
+  }
+
+  async event(type: string, payload?: Record<string, unknown>): Promise<void> {
+    const session = await this.start();
+    await this.command(`event(${JSON.stringify(type)}${payload ? `, ${JSON.stringify(payload)}` : ""})`, {
+      cmd: "device.event", session, type, payload,
+    });
+  }
+
+  private async command(label: string, request: Request): Promise<void> {
+    const response = await this.host!.send(request);
+    this.stepNumber++;
+    if (!response.ok) {
+      const node = await this.ls().catch(() => undefined);
+      throw this.failure(label, new ReflexProtocolError(response.error), node, 0, 0);
+    }
+    this.steps.push(`${label} ✓`);
   }
 
   private async poll(stepName: string, expectation: (node: NodeSnapshot) => void, label = stepName): Promise<NodeSnapshot> {

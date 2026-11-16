@@ -11,7 +11,9 @@ test("given past days, the user can browse their history day by day", async () =
   await using session = createBehaviorSession({ fixtures: [fixture("Health.default")] });
   await openToday(session);
   const history = await selectTab(session, "history", "History");
-  expect(history.state).toMatchObject({ date: "2026-11-16", canGoNext: false, summaryLabel: "1 of 4 taken", message: null, doseError: null });
+  expect(history.state).toMatchObject({
+    isLoading: false, date: "2026-11-16", canGoNext: false, summaryLabel: "1 of 4 taken", message: null, doseError: null,
+  });
   // Scheduled doses and as-needed logs, by time.
   expect(ids(history.state)).toEqual([
     "metformin@2026-11-16T08:00", "vitd@2026-11-16T08:00", "log:l4", "omega@2026-11-16T13:00", "metformin@2026-11-16T20:00",
@@ -78,7 +80,8 @@ test("given a missed dose yesterday, the user can record it as taken later and u
     payload: { doseId: missed },
     expectation: ({ state }) => {
       expect(state.doseError).toBe("Time must be within 12 hours of the scheduled dose");
-      expect(state.doses[2]).toMatchObject({ id: missed, status: "missed" });
+      // The screen said so already: "take now" isn't offered, "change time" is.
+      expect(state.doses[2]).toMatchObject({ id: missed, status: "missed", needsAction: true, canTake: false, canTakeAt: true });
     },
   });
   await session.do({

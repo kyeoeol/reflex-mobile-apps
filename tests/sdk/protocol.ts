@@ -16,13 +16,13 @@ export interface ActionInfo {
 export interface NodeSnapshot {
   name: string;
   path: string[];
-  state: Record<string, unknown>;
+  state: Record<string, any>;
   actions: ActionInfo[];
 }
 
 export interface TreeNode {
   name: string;
-  state: Record<string, unknown>;
+  state: Record<string, any>;
   actions: (ActionInfo & { scope?: "lent" })[];
 }
 
@@ -57,6 +57,10 @@ export type Request =
   | { cmd: "ls"; session: string }
   | { cmd: "tree"; session: string }
   | { cmd: "do"; session: string; action: string; payload?: unknown }
+  /** Headless only: merge values into the session's `device` fixture values (e.g. time passes). */
+  | { cmd: "device.set"; session: string; values: Record<string, unknown> }
+  /** Headless only: deliver an event from outside the app (e.g. a notification response). */
+  | { cmd: "device.event"; session: string; type: string; payload?: Record<string, unknown> }
   | { cmd: "session.close"; session: string };
 
 export type Response =

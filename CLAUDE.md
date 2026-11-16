@@ -30,7 +30,7 @@ repeated (`./reflex setup --force` re-checks). Every other `./reflex` command en
 | a test passes on one platform but not the other | `reflex-parity` |
 
 The order for any feature: contract → fixtures → behavior test → iOS core → Android core (same test, unchanged) →
-`./reflex check` → views. A feature is done only when `./reflex ci` is green.
+`./reflex check` → views. A feature is done only when `./reflex ci` is green and `./reflex e2e ios` and `./reflex e2e android` pass.
 
 ## Commands
 
@@ -46,6 +46,7 @@ The order for any feature: contract → fixtures → behavior test → iOS core 
 | `./reflex test --live` | `tests/reflex-live` against a running DEBUG build (127.0.0.1:7777) |
 | `./reflex app <ios\|android>` | Build the app shells (XcodeGen + xcodebuild / Gradle `:app`) |
 | `./reflex ci` | `check` + `unit` + `test`: the merge gate (CI: `.github/workflows/reflex.yml`) |
+| `./reflex e2e <ios\|android>` | Real UI on the iOS Simulator / an Android emulator (XCUITest / androidTest), then `tests/reflex-live`; see `docs/health/E2E.md` |
 
 Bun only runs `*.cli-test.ts` when given explicit paths; always go through `./reflex test`.
 
@@ -144,8 +145,12 @@ Keep this list current: if you change one of these, update it in the same change
   (permission, pending reminders). Their fixture values live in the existing `device` section (`now`, `timeZone`,
   `notificationPermission`, `notificationRequestResult`, `remindersMayBeLate`); no new top-level fixture key.
   Core computes the complete desired reminder set; the platform scheduler only reconciles it (diff by id).
-- Notification taps and actions enter Core as deep links (`<scheme>://reminder/<slot>[/taken|/skipped|/snooze]`),
-  so they are testable headlessly with `deeplink:` like any other link.
+- Notification responses enter Core through `AppRoot.handleReminderResponse(slot, action)`, never through a URL (any
+  app can open a URL). Headless tests deliver them, and move time or change permissions mid-session, with the
+  host commands `device.event` / `device.set` (SDK `session.event` / `session.device`; headless only, `UNSUPPORTED`
+  live). `ReflexHost` routes them to a per-session device-control object returned by the CLI's `makeSession`.
+- Two test layers above the cores: `tests/reflex-live` (protocol, against a running DEBUG build) and native UI E2E on
+  simulators/emulators (`./reflex e2e`), with accessibility identifiers shared by both platforms.
 - Apps: iOS project from XcodeGen; Android `:app` is included only when an Android SDK is present
   (`REFLEX_SKIP_APP=1` skips it). Debug socket server: iOS `#if DEBUG`, Android `src/debug` + `debugImplementation`.
 

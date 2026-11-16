@@ -66,3 +66,12 @@ export async function openReminders(session: BehaviorSession, expectation?: (nod
 export function reminderIds(state: Json): string[] {
   return (state.reminders as Json[]).map((r) => r.id);
 }
+
+/** The user answers a reminder notification (tap = "open", or one of its buttons). */
+export async function respondToReminder(
+  session: BehaviorSession,
+  slot: string,
+  action: "open" | "taken" | "skipped" | "snooze",
+) {
+  await session.event("notificationResponse", { slot, action });
+}

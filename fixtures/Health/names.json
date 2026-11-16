@@ -1,0 +1,10 @@
+{
+  "storage": {
+    "health.data": "{\"version\":1,\"medications\":[{\"id\":\"m1\",\"name\":\"Zinc\",\"kind\":\"supplement\",\"dose\":\"\",\"notes\":\"\",\"asNeeded\":true,\"startDate\":\"2026-11-01\",\"endDate\":null,\"schedules\":[],\"archived\":[]},{\"id\":\"m2\",\"name\":\"Éclair\",\"kind\":\"supplement\",\"dose\":\"\",\"notes\":\"\",\"asNeeded\":true,\"startDate\":\"2026-11-01\",\"endDate\":null,\"schedules\":[],\"archived\":[]},{\"id\":\"m3\",\"name\":\"apple\",\"kind\":\"supplement\",\"dose\":\"\",\"notes\":\"\",\"asNeeded\":true,\"startDate\":\"2026-11-01\",\"endDate\":null,\"schedules\":[],\"archived\":[]},{\"id\":\"m4\",\"name\":\"오메가\",\"kind\":\"supplement\",\"dose\":\"\",\"notes\":\"\",\"asNeeded\":true,\"startDate\":\"2026-11-01\",\"endDate\":null,\"schedules\":[],\"archived\":[]},{\"id\":\"m5\",\"name\":\"Bee\",\"kind\":\"supplement\",\"dose\":\"\",\"notes\":\"\",\"asNeeded\":true,\"startDate\":\"2026-11-01\",\"endDate\":null,\"schedules\":[],\"archived\":[]}],\"logs\":[],\"snoozes\":[]}"
+  },
+  "device": {
+    "now": "2026-11-16T09:00:00",
+    "timeZone": "Asia/Seoul",
+    "notificationPermission": "authorized"
+  }
+}
