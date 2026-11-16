@@ -48,7 +48,7 @@ class InMemoryStorage(initial: Map<String, String> = emptyMap()) : Storage {
 
 /**
  * Time. A cheap synchronous read like [FeatureFlags]; [changes] emits on minute ticks, significant time changes,
- * time zone changes and app foreground (never in fixtures). Same edge as iOS `Clock`.
+ * time zone changes and app foreground (in the CLI: once after every `device.set`). Same edge as iOS `Clock`.
  */
 interface Clock {
     fun now(): Instant
@@ -83,10 +83,14 @@ interface ReminderScheduler {
     suspend fun permission(): NotificationPermission
     /** Asks the user when the permission is not determined; returns the resulting permission. */
     suspend fun requestPermission(): NotificationPermission
-    /** True when reminders can't fire exactly (Android without exact alarms). */
+    /** True when reminders can't fire exactly (Android without exact alarms: a 10-minute window). */
     suspend fun mayBeLate(): Boolean
-    /** pending := [reminders] (diff by id). Core never runs two calls at once. */
-    suspend fun replaceAll(reminders: List<Reminder>)
+    /**
+     * pending := [reminders]. Items whose id is new or whose fireAt/title/body changed are (re)scheduled, items no
+     * longer present are cancelled; delivered notifications whose slot isn't in [openSlots] are removed (open slot =
+     * at least one unlogged dose and now < T + 120 min). Core never runs two calls at once, and calls in order.
+     */
+    suspend fun replaceAll(reminders: List<Reminder>, openSlots: Set<String>)
     suspend fun pending(): List<Reminder>
     suspend fun openSettings()
 }

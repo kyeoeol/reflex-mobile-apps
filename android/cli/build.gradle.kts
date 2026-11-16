@@ -14,6 +14,9 @@ dependencies {
     implementation(project(":reflex-host"))
 }
 
+// The plain `jar` (run by `gradle test`/`build` through the module graph) must not overwrite the fat cli.jar.
+tasks.jar { archiveClassifier.set("plain") }
+
 tasks.register<Jar>("fatJar") {
     archiveFileName.set("cli.jar")
     manifest { attributes["Main-Class"] = "app.reflex.cli.MainKt" }

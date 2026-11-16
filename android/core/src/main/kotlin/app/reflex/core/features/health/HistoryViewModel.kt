@@ -12,6 +12,7 @@ class HistoryViewModel(
 ) {
 
     data class State(
+        val isLoading: Boolean,
         val date: String,
         val canGoNext: Boolean,
         val summaryLabel: String?,
@@ -66,20 +67,24 @@ class HistoryViewModel(
     companion object {
         const val EMPTY_MESSAGE = "Nothing recorded on this day"
 
-        /** That day's occurrences plus its as-needed log entries, by time (`takenAt` for as-needed), then name. */
+        /**
+         * That day's occurrences plus its as-needed log entries, by time (`takenAt` for as-needed), then name key,
+         * then id. Nothing is said about an empty day while the data is still loading.
+         */
         fun render(snapshot: HealthSnapshot, date: LocalDate, doseError: String?): State {
             val occurrences = snapshot.days.occurrences(date)
             val scheduled = occurrences.map { DoseItem.of(it, snapshot.now, snapshot.zone) }
             val asNeeded = snapshot.days.asNeededLogs(date).map(DoseItem::of)
             val doses = (scheduled + asNeeded).sortedWith(
-                compareBy({ it.time ?: it.takenAt.orEmpty() }, { nameKey(it.name) }, { it.medicationId }, { it.id }),
+                compareBy<DoseItem> { it.time ?: it.takenAt.orEmpty() }.then(byName({ it.name }, { it.id })),
             )
             return State(
+                isLoading = snapshot.isLoading,
                 date = HealthTime.date(date),
                 canGoNext = date < snapshot.today,
                 summaryLabel = progressLabel(occurrences.count { it.log?.status == LogStatus.Taken }, occurrences.size),
                 doses = doses,
-                message = if (doses.isEmpty()) EMPTY_MESSAGE else null,
+                message = if (doses.isEmpty() && !snapshot.isLoading) EMPTY_MESSAGE else null,
                 doseError = doseError,
             )
         }

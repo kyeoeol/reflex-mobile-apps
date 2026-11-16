@@ -17,12 +17,15 @@ class TodayViewModelIntrospectionNode(private val viewModel: TodayViewModel) : I
                 "takenCount" to JsonValue.Num(it.takenCount),
                 "scheduledCount" to JsonValue.Num(it.scheduledCount),
                 "message" to JsonValue.of(it.message),
+                "messageKind" to JsonValue.of(it.messageKind),
                 "reminderBanner" to JsonValue.of(it.reminderBanner),
+                "reminderBannerAction" to JsonValue.of(it.reminderBannerAction),
                 "groups" to JsonValue.Arr(it.groups.map { group ->
                     JsonValue.obj(
                         "key" to JsonValue.Str(group.key),
                         "date" to JsonValue.Str(group.date),
                         "time" to JsonValue.Str(group.time),
+                        "label" to JsonValue.Str(group.label),
                         "doses" to JsonValue.Arr(group.doses.map(DoseItem::json)),
                     )
                 }),
@@ -34,6 +37,7 @@ class TodayViewModelIntrospectionNode(private val viewModel: TodayViewModel) : I
                         "takenToday" to JsonValue.Num(item.takenToday),
                         "lastTakenAt" to JsonValue.of(item.lastTakenAt),
                         "summary" to JsonValue.Str(item.summary),
+                        "canUndo" to JsonValue.Bool(item.canUndo),
                     )
                 }),
                 "doseError" to JsonValue.of(it.doseError),
@@ -52,6 +56,7 @@ class TodayViewModelIntrospectionNode(private val viewModel: TodayViewModel) : I
             IntrospectionAction("OpenReminders") { viewModel.send(Action.OpenReminders) },
             IntrospectionAction("AddMedication") { viewModel.send(Action.AddMedication) },
             IntrospectionAction("OpenMedication", IdInput.serializer()) { viewModel.send(Action.OpenMedication(it.id)) },
+            IntrospectionAction("Retry") { viewModel.send(Action.Retry) },
         )
 
     override val child: IntrospectionNode? = null

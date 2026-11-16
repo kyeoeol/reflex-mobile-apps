@@ -19,10 +19,12 @@ import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 // Health Beta domain (docs/health/CONTRACT.md §1): data types, JSON coding of `health.data`, time resolution and
-// formatting, and the pure functions every screen is computed from. No state, no I/O.
+// formatting, name ordering, and the pure functions every screen is computed from. No state, no I/O.
 
 // Data ---------------------------------------------------------------------------------------------------------
 
@@ -45,13 +47,13 @@ data class Medication(
     val asNeeded: Boolean = false,
     val startDate: LocalDate,
     val endDate: LocalDate? = null,
-    /** Append-only versions; see [versionOn]. As-needed medications have none. */
+    /** Append-only versions; see [versionOn]. As-needed medications have none. The last one is the latest. */
     val schedules: List<ScheduleVersion> = emptyList(),
     val archived: List<ArchivePeriod> = emptyList(),
 ) {
     init {
         require(kind in KINDS) { "unknown kind '$kind'" }
-        require('@' !in id) { "medication ids never contain '@'" }
+        require('@' !in id) { "ids never contain '@'" }
     }
 
     companion object {
@@ -61,8 +63,14 @@ data class Medication(
     }
 }
 
+/** One schedule version. [createdAt]: when it was saved (null for data written before v2). */
 @Serializable
-data class ScheduleVersion(val from: LocalDate, val times: List<LocalTime>, val weekdays: List<Int>) {
+data class ScheduleVersion(
+    val from: LocalDate,
+    val times: List<LocalTime> = emptyList(),
+    val weekdays: List<Int> = emptyList(),
+    val createdAt: OffsetDateTime? = null,
+) {
     init {
         require(weekdays.all { it in 1..7 }) { "weekdays are 1 (Monday) … 7 (Sunday)" }
     }
@@ -94,6 +102,7 @@ data class DoseLog(
     val dose: String = "",
 ) {
     init {
+        require('@' !in id) { "ids never contain '@'" }
         require(status == LogStatus.Skipped || takenAt != null) { "a taken log needs takenAt" }
         require(time != null || status == LogStatus.Taken) { "as-needed logs are always taken" }
     }
@@ -115,15 +124,23 @@ data class Slot(val date: LocalDate, val time: LocalTime) {
     }
 }
 
-/** JSON coding of `storage["health.data"]`: unknown keys ignored, missing optional keys defaulted. */
+/**
+ * JSON coding of `storage["health.data"]`: unknown keys ignored, missing optional keys defaulted, and anything
+ * semantically invalid (malformed dates/times, weekdays outside 1–7, unknown kind/status, …) rejected.
+ */
 object HealthCoding {
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
+        // An explicit `null` for an optional key means "missing" (its default), like Swift's `decodeIfPresent`.
+        coerceInputValues = true
     }
 
-    /** Throws on anything that isn't a valid `health.data` value (the repository then fails to load). */
-    fun decode(text: String): HealthData = json.decodeFromString(HealthData.serializer(), text)
+    /** Empty or `null` → empty data. Throws on anything that isn't a valid `health.data` value. */
+    fun decode(text: String?): HealthData {
+        if (text == null || text.isBlank() || text.trim() == "null") return HealthData()
+        return json.decodeFromString(HealthData.serializer(), text)
+    }
 
     fun encode(data: HealthData): String = json.encodeToString(HealthData.serializer(), data)
 }
@@ -182,23 +199,52 @@ object HealthTime {
     /** `HH:mm` in the offset stored with the value. */
     fun clockTime(value: OffsetDateTime): String = TIME_FORMAT.format(value)
 
-    /** For storing `now` (or a user-entered time) in a log: whole seconds, the zone's offset at that instant. */
+    /** For storing `now` (or a user-entered time): whole seconds, with the offset [zone] has at that instant. */
     fun offsetDateTime(instant: Instant, zone: ZoneId): OffsetDateTime =
-        instant.truncatedTo(java.time.temporal.ChronoUnit.SECONDS).atZone(zone).toOffsetDateTime()
+        instant.truncatedTo(ChronoUnit.SECONDS).atZone(zone).toOffsetDateTime()
 
     fun today(now: Instant, zone: ZoneId): LocalDate = LocalDate.ofInstant(now, zone)
 }
 
-/** Case-insensitive name order used everywhere a list is "sorted by name". */
-internal fun nameKey(name: String): String = name.lowercase(Locale.ROOT)
+// Names --------------------------------------------------------------------------------------------------------
+
+/** The sort/compare key of a name: lowercased with the Unicode default case mapping (`Locale.ROOT`). */
+fun nameKey(name: String): String = name.lowercase(Locale.ROOT)
+
+/** Compares two strings by Unicode code point sequence (not UTF-16 units, not locale collation). */
+fun compareCodePoints(a: String, b: String): Int {
+    var i = 0
+    var j = 0
+    while (i < a.length && j < b.length) {
+        val ca = a.codePointAt(i)
+        val cb = b.codePointAt(j)
+        if (ca != cb) return ca.compareTo(cb)
+        i += Character.charCount(ca)
+        j += Character.charCount(cb)
+    }
+    return (i < a.length).compareTo(j < b.length)
+}
+
+/** "By name" everywhere: the name key by code points, then [id]. */
+fun <T> byName(name: (T) -> String, id: (T) -> String): Comparator<T> =
+    Comparator<T> { x, y -> compareCodePoints(nameKey(name(x)), nameKey(name(y))) }.thenBy(id)
+
+/** The duplicate-name key: trimmed of Unicode whitespace, then lowercased. */
+fun duplicateKey(name: String): String = nameKey(name.trim())
 
 // Medications --------------------------------------------------------------------------------------------------
 
 enum class MedicationStatus(val code: String) { Active("active"), Ended("ended"), Archived("archived") }
 
-/** The schedule version in force on [date]: the latest with `from ≤ date`, else the earliest. */
-fun Medication.versionOn(date: LocalDate): ScheduleVersion? =
-    schedules.filter { it.from <= date }.maxByOrNull { it.from } ?: schedules.minByOrNull { it.from }
+/** The latest version: the last one in the list. */
+val Medication.latestVersion: ScheduleVersion? get() = schedules.lastOrNull()
+
+/** The version in force on [date]: the latest `from ≤ date` (ties: the later one in the list), else the earliest. */
+fun Medication.versionOn(date: LocalDate): ScheduleVersion? {
+    var best: ScheduleVersion? = null
+    for (version in schedules) if (version.from <= date && (best == null || version.from >= best.from)) best = version
+    return best ?: schedules.minByOrNull { it.from }
+}
 
 fun Medication.isArchivedOn(date: LocalDate): Boolean =
     archived.any { it.from <= date && (it.to == null || date <= it.to) }
@@ -209,22 +255,30 @@ fun Medication.status(today: LocalDate): MedicationStatus = when {
     else -> MedicationStatus.Active
 }
 
-/** The times this medication has an occurrence at on [date] (none for as-needed, outside its dates, archived days). */
-fun Medication.scheduledTimes(date: LocalDate): List<LocalTime> {
+/**
+ * The times this medication has an occurrence at on [date]: none for as-needed, outside its dates or on archived
+ * days; and on the day a version was created, none whose dose would already have been missed at creation.
+ */
+fun Medication.scheduledTimes(date: LocalDate, zone: ZoneId): List<LocalTime> {
     if (asNeeded || date < startDate || (endDate != null && date > endDate) || isArchivedOn(date)) return emptyList()
     val version = versionOn(date) ?: return emptyList()
-    return if (date.dayOfWeek.value in version.weekdays) version.times.distinct() else emptyList()
+    if (date.dayOfWeek.value !in version.weekdays) return emptyList()
+    val createdAt = version.createdAt?.toInstant()
+    val createdToday = createdAt != null && version.from == date && HealthTime.today(createdAt, zone) == date
+    return version.times.distinct().filter { time ->
+        !(createdToday && HealthTime.resolve(date, time, zone) + HealthTime.MISSED_AFTER <= createdAt)
+    }
 }
 
-/** True when the version in force on [date] has times (what "has times" means for banners and permission). */
-fun Medication.hasTimes(date: LocalDate): Boolean = !asNeeded && versionOn(date)?.times.orEmpty().isNotEmpty()
+/** True when the latest version has times (what "has times" means for banners and the permission request). */
+fun Medication.hasTimes(): Boolean = !asNeeded && latestVersion?.times.orEmpty().isNotEmpty()
 
 private val WEEKDAY_NAMES = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
-/** `"As needed"`, `"Every day at 08:00, 20:00"`, `"Mon, Wed, Fri at 13:00"` (the version in force on [date]). */
-fun Medication.scheduleSummary(date: LocalDate): String {
+/** `"As needed"`, `"Every day at 08:00, 20:00"`, `"Mon, Wed, Fri at 13:00"`, from the latest version. */
+fun Medication.scheduleSummary(): String {
     if (asNeeded) return "As needed"
-    val version = versionOn(date)
+    val version = latestVersion
     val weekdays = version?.weekdays.orEmpty().distinct().sorted()
     val times = version?.times.orEmpty().distinct().sorted().joinToString(", ") { HealthTime.time(it) }
     val days = if (weekdays == (1..7).toList()) "Every day" else weekdays.joinToString(", ") { WEEKDAY_NAMES[it - 1] }
@@ -277,25 +331,31 @@ data class Occurrence(
             else -> "onTime"
         }
     }
+
+    companion object {
+        /** Doses of one slot / one list "by name": name key, then medication id. */
+        val BY_NAME: Comparator<Occurrence> = byName({ it.name }, { it.medicationId })
+    }
 }
 
 /**
- * Indexed view of one [HealthData] value: which doses exist on a day, and their logs.
- * Built once per data value (see `HealthSnapshot.days`).
+ * Indexed view of one [HealthData] value in one time zone: which doses exist on a day, and their logs.
+ * Built once per snapshot (see `HealthSnapshot.days`).
  */
-class HealthDays(val data: HealthData) {
+class HealthDays(val data: HealthData, val zone: ZoneId) {
     val medications: Map<String, Medication> = data.medications.associateBy { it.id }
     private val logsByDate: Map<LocalDate, List<DoseLog>> = data.logs.groupBy { it.date }
+    private val cache = HashMap<LocalDate, List<Occurrence>>()
 
     fun scheduledLog(medicationId: String, date: LocalDate, time: LocalTime): DoseLog? =
         logsByDate[date].orEmpty().firstOrNull { it.medicationId == medicationId && it.time == time }
 
     /** The schedule's occurrences on [date] plus every scheduled log on that day (editing never rewrites history). */
-    fun occurrences(date: LocalDate): List<Occurrence> {
+    fun occurrences(date: LocalDate): List<Occurrence> = cache.getOrPut(date) {
         val logs = logsByDate[date].orEmpty().filter { it.time != null }
         val result = LinkedHashMap<Pair<String, LocalTime>, Occurrence>()
         for (medication in data.medications) {
-            for (time in medication.scheduledTimes(date)) {
+            for (time in medication.scheduledTimes(date, zone)) {
                 result[medication.id to time] = Occurrence(medication.id, date, time, medication, null)
             }
         }
@@ -303,7 +363,7 @@ class HealthDays(val data: HealthData) {
             val key = log.medicationId to log.time!!
             if (key !in result) result[key] = Occurrence(log.medicationId, date, log.time, medications[log.medicationId], null)
         }
-        return result.values.map { occurrence ->
+        result.values.map { occurrence ->
             occurrence.copy(log = logs.firstOrNull { it.medicationId == occurrence.medicationId && it.time == occurrence.time })
         }
     }
@@ -313,6 +373,9 @@ class HealthDays(val data: HealthData) {
 
     /** As-needed logs dated [date]. */
     fun asNeededLogs(date: LocalDate): List<DoseLog> = logsByDate[date].orEmpty().filter { it.time == null }
+
+    /** Any log of [medicationId] dated [date] (scheduled or as-needed). */
+    fun hasLog(medicationId: String, date: LocalDate): Boolean = logsByDate[date].orEmpty().any { it.medicationId == medicationId }
 }
 
 /** The dose object every list shows (Today, History, MedicationDetail), already formatted. */
@@ -324,15 +387,19 @@ data class DoseItem(
     val date: String,
     val time: String?,
     val status: String,
+    val needsAction: Boolean,
     val takenAt: String?,
     val timing: String?,
     val canTake: Boolean,
+    val canTakeAt: Boolean,
     val canSkip: Boolean,
     val canUndo: Boolean,
 ) {
     companion object {
         fun of(occurrence: Occurrence, now: Instant, zone: ZoneId): DoseItem {
             val status = occurrence.status(now, zone)
+            val at = occurrence.scheduledAt(zone)
+            val inWindow = at - HealthTime.TAKEN_WINDOW <= now && now <= at + HealthTime.TAKEN_WINDOW
             return DoseItem(
                 id = occurrence.doseId,
                 medicationId = occurrence.medicationId,
@@ -341,9 +408,11 @@ data class DoseItem(
                 date = HealthTime.date(occurrence.date),
                 time = HealthTime.time(occurrence.time),
                 status = status.code,
+                needsAction = status == DoseStatus.Due || status == DoseStatus.Missed,
                 takenAt = occurrence.log?.takenAt?.let(HealthTime::clockTime),
                 timing = occurrence.timing(zone),
-                canTake = status != DoseStatus.Taken,
+                canTake = status != DoseStatus.Taken && inWindow,
+                canTakeAt = true,
                 canSkip = status != DoseStatus.Skipped,
                 canUndo = occurrence.log != null,
             )
@@ -358,9 +427,11 @@ data class DoseItem(
             date = HealthTime.date(log.date),
             time = null,
             status = DoseStatus.Taken.code,
+            needsAction = false,
             takenAt = log.takenAt?.let(HealthTime::clockTime),
             timing = null,
             canTake = false,
+            canTakeAt = false,
             canSkip = false,
             canUndo = true,
         )
@@ -415,5 +486,11 @@ object LocalTimeSerializer : KSerializer<LocalTime> {
 object OffsetDateTimeSerializer : KSerializer<OffsetDateTime> {
     override val descriptor = PrimitiveSerialDescriptor("health.OffsetDateTime", PrimitiveKind.STRING)
     override fun serialize(encoder: Encoder, value: OffsetDateTime) = encoder.encodeString(HealthTime.formatOffsetDateTime(value))
-    override fun deserialize(decoder: Decoder): OffsetDateTime = OffsetDateTime.parse(decoder.decodeString())
+    override fun deserialize(decoder: Decoder): OffsetDateTime = decoder.decodeString().let {
+        try {
+            OffsetDateTime.parse(it)
+        } catch (e: DateTimeParseException) {
+            throw IllegalArgumentException("malformed instant '$it'")
+        }
+    }
 }

@@ -12,6 +12,7 @@ class HistoryViewModelIntrospectionNode(private val viewModel: HistoryViewModel)
     override val state: Map<String, JsonValue>
         get() = viewModel.state.value.let {
             linkedMapOf(
+                "isLoading" to JsonValue.Bool(it.isLoading),
                 "date" to JsonValue.Str(it.date),
                 "canGoNext" to JsonValue.Bool(it.canGoNext),
                 "summaryLabel" to JsonValue.of(it.summaryLabel),

@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 // Shared by the Health nodes only (the app never uses it): the dose object and the action inputs several
 // screens accept. Unconditional, like the nodes themselves.
 
-/** `{id, medicationId, name, dose, date, time, status, takenAt, timing, canTake, canSkip, canUndo}` */
+/** `{id, medicationId, name, dose, date, time, status, needsAction, takenAt, timing, canTake, canTakeAt, canSkip, canUndo}` */
 internal fun DoseItem.json(): JsonValue = JsonValue.obj(
     "id" to JsonValue.Str(id),
     "medicationId" to JsonValue.Str(medicationId),
@@ -15,9 +15,11 @@ internal fun DoseItem.json(): JsonValue = JsonValue.obj(
     "date" to JsonValue.Str(date),
     "time" to JsonValue.of(time),
     "status" to JsonValue.Str(status),
+    "needsAction" to JsonValue.Bool(needsAction),
     "takenAt" to JsonValue.of(takenAt),
     "timing" to JsonValue.of(timing),
     "canTake" to JsonValue.Bool(canTake),
+    "canTakeAt" to JsonValue.Bool(canTakeAt),
     "canSkip" to JsonValue.Bool(canSkip),
     "canUndo" to JsonValue.Bool(canUndo),
 )
