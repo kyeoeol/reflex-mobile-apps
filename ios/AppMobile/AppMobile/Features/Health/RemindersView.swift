@@ -23,7 +23,7 @@ struct RemindersView: View {
                 .background(HealthColors.secondaryBackground, in: RoundedRectangle(cornerRadius: HealthSpacing.panelRadius))
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(state.reminders, id: \.id) { reminder in
-                        ReminderRow(kind: reminder.kind, fireAtLabel: HealthFormat.fireAtLabel(reminder.fireAt),
+                        ReminderRow(fireAtLabel: HealthFormat.fireAtLabel(reminder.fireAt),
                                     title: reminder.title, bodyText: reminder.body)
                             .accessibilityIdentifier("reminders.item.\(reminder.id)")
                     }
@@ -34,5 +34,6 @@ struct RemindersView: View {
         .background(HealthColors.background)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .opaqueNavigationBar()
     }
 }

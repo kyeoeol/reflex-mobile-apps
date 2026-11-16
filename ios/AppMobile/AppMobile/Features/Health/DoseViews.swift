@@ -89,6 +89,7 @@ struct TakeAtSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .presentationBackground(HealthColors.background)
     }
 }
 
@@ -97,14 +98,17 @@ struct DatePickerSheet: View {
     let title: String
     let start: Date
     let identifier: String
+    var detents: Set<PresentationDetent> = [.large]
     let onDone: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var value: Date
 
-    init(title: String, start: Date, identifier: String, onDone: @escaping (String) -> Void) {
+    init(title: String, start: Date, identifier: String, detents: Set<PresentationDetent> = [.large],
+         onDone: @escaping (String) -> Void) {
         self.title = title
         self.start = start
         self.identifier = identifier
+        self.detents = detents
         self.onDone = onDone
         _value = State(initialValue: start)
     }
@@ -133,7 +137,16 @@ struct DatePickerSheet: View {
                 }
             }
         }
-        .presentationDetents([.large])
+        .presentationDetents(detents)
+        .presentationBackground(HealthColors.background)
+    }
+}
+
+extension View {
+    /// An opaque navigation bar, so scrolled content never runs under the floating toolbar buttons.
+    func opaqueNavigationBar() -> some View {
+        toolbarBackground(HealthColors.background, for: .navigationBar)
+            .toolbarBackgroundVisibility(.visible, for: .navigationBar)
     }
 }
 

@@ -1,21 +1,54 @@
 import SwiftUI
 
-/// Controlled toggle; selection and editability come from the screen's state.
+/// Controlled capsule toggle; selection and editability come from the screen's state. On: filled, with a leading
+/// check where there is room (`showsCheck`; the 7-across weekday circles have none), so it reads as a toggle, not a
+/// button. Disabled: no fill and a faint outline whatever its value (the check stays when on), so a locked "on"
+/// never looks like an active control and a locked "off" stays clearly off.
 struct PillToggle: View {
     let title: String
     let isOn: Bool
     var isEnabled: Bool = true
+    var showsCheck: Bool = true
     var accessibilityTitle: String? = nil
     let onToggle: () -> Void
 
     var body: some View {
-        Button(action: onToggle) { Text(title).frame(maxWidth: .infinity) }
-            .buttonStyle(PillButtonStyle(kind: isOn ? .primary : .outline, isControl: true, horizontalPadding: 8))
+        Button(action: onToggle) {
+            HStack(spacing: HealthSpacing.xs) {
+                if isOn && showsCheck { Image(systemName: "checkmark").accessibilityHidden(true) }
+                Text(title)
+            }.frame(maxWidth: .infinity)
+        }
+            .buttonStyle(PillToggleStyle(isOn: isOn))
             .disabled(!isEnabled)
             .accessibilityLabel(accessibilityTitle ?? title)
             .accessibilityValue(isOn ? "On" : "Off")
             .accessibilityRemoveTraits(.isButton)
             .accessibilityAddTraits(.isToggle)
+    }
+}
+
+private struct PillToggleStyle: ButtonStyle {
+    let isOn: Bool
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        let filled = isOn && isEnabled
+        configuration.label
+            .font(HealthTypography.meta)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, HealthSpacing.xs)
+            .frame(minWidth: HealthSpacing.controlHeight, minHeight: HealthSpacing.controlHeight)
+            .foregroundStyle(filled ? HealthColors.onPrimary : (isEnabled ? HealthColors.primary : HealthColors.secondary))
+            .background(filled ? HealthColors.primary : .clear, in: Capsule())
+            .overlay(Capsule().strokeBorder(border, lineWidth: 1))
+            .opacity(configuration.isPressed ? 0.7 : 1)
+            .contentShape(Capsule())
+    }
+
+    private var border: Color {
+        if !isEnabled { return HealthColors.strongBorder }
+        return isOn ? .clear : HealthColors.controlBorder
     }
 }
 
@@ -31,7 +64,7 @@ struct WeekdayPicker: View {
     var body: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: max(48, minimumWidth)), spacing: 4)], spacing: 8) {
             ForEach(labels.indices, id: \.self) { index in
-                PillToggle(title: labels[index], isOn: selectedWeekdays.contains(index + 1),
+                PillToggle(title: labels[index], isOn: selectedWeekdays.contains(index + 1), showsCheck: false,
                            accessibilityTitle: names[index]) { onToggle(index + 1) }
                     .accessibilityIdentifier("\(identifierPrefix).\(index + 1)")
             }
@@ -68,10 +101,15 @@ struct DoseRow: View {
                 if canSkip { Button("Skip", action: onSkip).accessibilityIdentifier("doseMenu.skip") }
                 if canUndo { Button("Undo", action: onUndo).accessibilityIdentifier("doseMenu.undo") }
             } label: {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(meta).font(HealthTypography.meta).foregroundStyle(HealthColors.secondary)
-                    Text(name).font(HealthTypography.row).fixedSize(horizontal: false, vertical: true)
-                    if !dose.isEmpty { Text(dose).font(HealthTypography.caption).foregroundStyle(HealthColors.secondary) }
+                // The whole label opens the menu; the trailing ellipsis says so (upcoming rows included).
+                HStack(spacing: HealthSpacing.sm) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if !meta.isEmpty { Text(meta).font(HealthTypography.meta).foregroundStyle(HealthColors.secondary) }
+                        Text(name).font(HealthTypography.row).fixedSize(horizontal: false, vertical: true)
+                        if !dose.isEmpty { Text(dose).font(HealthTypography.caption).foregroundStyle(HealthColors.secondary) }
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "ellipsis").font(HealthTypography.row).foregroundStyle(HealthColors.secondary)
+                        .frame(minWidth: 24).accessibilityHidden(true)
                 }.frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
                     .padding(.top, 8).contentShape(Rectangle())
             }.buttonStyle(.plain)
@@ -175,15 +213,12 @@ struct HistoryDayPager: View {
     }
 }
 
+/// A pending reminder. Its title already says what kind it is ("Time for…" / "Still due:").
 struct ReminderRow: View {
-    let kind: String
     let fireAtLabel: String
     let title: String
     let bodyText: String
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ListRow(title: title, meta: fireAtLabel, detail: bodyText)
-            Text(kind).font(HealthTypography.caption).foregroundStyle(HealthColors.secondary)
-        }.accessibilityElement(children: .combine)
+        ListRow(title: title, meta: fireAtLabel, detail: bodyText)
     }
 }
