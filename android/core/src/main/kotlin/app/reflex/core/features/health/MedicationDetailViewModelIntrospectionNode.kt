@@ -21,6 +21,7 @@ class MedicationDetailViewModelIntrospectionNode(private val viewModel: Medicati
                 "endDate" to JsonValue.of(it.endDate),
                 "status" to JsonValue.Str(it.status),
                 "adherenceLabel" to JsonValue.Str(it.adherenceLabel),
+                "adherenceCaption" to JsonValue.of(it.adherenceCaption),
                 "takenCount" to JsonValue.Num(it.takenCount),
                 "skippedCount" to JsonValue.Num(it.skippedCount),
                 "missedCount" to JsonValue.Num(it.missedCount),

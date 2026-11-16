@@ -30,6 +30,11 @@ class MedicationEditorViewModel(
         val datesError: String?,
         val timeError: String?,
         val canAddTime: Boolean,
+        /** Add mode only: an existing medication can't switch between scheduled and as-needed. */
+        val canChangeAsNeeded: Boolean,
+        /** No validation error (whether or not the errors are shown yet). */
+        val isValid: Boolean,
+        /** Not saving and the stored data loaded without error; Save stays tappable on an invalid form. */
         val canSave: Boolean,
         val isSaving: Boolean,
         /** The four validation errors are shown only after the first `Save` attempt. */
@@ -55,6 +60,9 @@ class MedicationEditorViewModel(
         data object StoreChanged : Message
     }
 
+    /** The medication this editor edits; null in add mode. (AppRoot removes the editor when it is deleted.) */
+    val editedMedicationId: String? = state.value.medicationId
+
     init {
         store.observe(this, scope) { it.send(Message.StoreChanged) }
     }
@@ -69,7 +77,7 @@ class MedicationEditorViewModel(
                 is Action.SetKind -> if (action.kind in Medication.KINDS) state.copy(kind = action.kind) else state
                 is Action.SetDose -> state.copy(dose = action.dose)
                 is Action.SetNotes -> state.copy(notes = action.notes)
-                is Action.SetAsNeeded -> state.copy(asNeeded = action.asNeeded)
+                is Action.SetAsNeeded -> if (state.canChangeAsNeeded) state.copy(asNeeded = action.asNeeded) else state
                 is Action.AddTime -> addTime(state, action.time)
                 is Action.RemoveTime ->
                     if (action.time in state.times) state.copy(times = state.times - action.time, timeError = null) else state
@@ -98,9 +106,11 @@ class MedicationEditorViewModel(
         return state.copy(times = (state.times + text).sorted(), timeError = null)
     }
 
+    /** Invalid → reveal the errors; valid → store, pop, and ask for notifications if never asked. */
     private fun save(state: State): State {
+        if (!render(store.current, state).canSave) return state
         val attempted = state.copy(hasTriedToSave = true)
-        if (!render(store.current, attempted).canSave) return attempted
+        if (!render(store.current, attempted).isValid) return attempted
         val draft = MedicationDraft(
             id = state.medicationId,
             name = state.name,
@@ -123,11 +133,11 @@ class MedicationEditorViewModel(
         const val MAX_TIMES = 12
         private val ALL_WEEKDAYS = (1..7).toList()
 
-        /** Add mode defaults, or the medication's values with the times/weekdays in force today. */
+        /** Add mode defaults, or the medication's values with the latest version's times/weekdays. */
         fun initial(snapshot: HealthSnapshot, medicationId: String?): State {
             val today = snapshot.today
             val medication = medicationId?.let { snapshot.days.medications[it] }
-            val version = medication?.versionOn(today)
+            val version = medication?.latestVersion
             return State(
                 mode = if (medication == null) "add" else "edit",
                 medicationId = medication?.id,
@@ -141,18 +151,19 @@ class MedicationEditorViewModel(
                 startDate = HealthTime.date(medication?.startDate ?: today),
                 endDate = medication?.endDate?.let(HealthTime::date),
                 nameError = null, timesError = null, weekdaysError = null, datesError = null, timeError = null,
-                canAddTime = true, canSave = false, isSaving = false,
+                canAddTime = true, canChangeAsNeeded = medication == null, isValid = false, canSave = false,
+                isSaving = false,
             )
         }
 
-        /** Recomputes the validation fields (errors live once a save was attempted) from the other fields. */
+        /** Recomputes the validation fields (errors shown once a save was attempted) from the other fields. */
         fun render(snapshot: HealthSnapshot, state: State): State {
             val today = snapshot.today
-            val trimmed = state.name.trim()
+            val key = duplicateKey(state.name)
             val nameError = when {
-                trimmed.isEmpty() -> "Name is required"
+                key.isEmpty() -> "Name is required"
                 snapshot.data.medications.any {
-                    it.id != state.medicationId && it.status(today) != MedicationStatus.Archived && nameKey(it.name.trim()) == nameKey(trimmed)
+                    it.id != state.medicationId && it.status(today) == MedicationStatus.Active && duplicateKey(it.name) == key
                 } -> "A medication with this name already exists"
                 else -> null
             }
@@ -160,7 +171,6 @@ class MedicationEditorViewModel(
             val weekdaysError = if (!state.asNeeded && state.weekdays.isEmpty()) "Pick at least one day" else null
             val endDate = state.endDate
             val datesError = if (endDate != null && endDate < state.startDate) "End date can't be before start date" else null
-            val valid = nameError == null && timesError == null && weekdaysError == null && datesError == null
             val shown = state.hasTriedToSave
             return state.copy(
                 nameError = nameError.takeIf { shown },
@@ -168,7 +178,8 @@ class MedicationEditorViewModel(
                 weekdaysError = weekdaysError.takeIf { shown },
                 datesError = datesError.takeIf { shown },
                 canAddTime = state.times.size < MAX_TIMES,
-                canSave = valid && !state.isSaving && snapshot.canWrite,
+                isValid = nameError == null && timesError == null && weekdaysError == null && datesError == null,
+                canSave = !state.isSaving && snapshot.canWrite,
             )
         }
     }

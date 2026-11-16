@@ -29,6 +29,8 @@ class MedicationEditorViewModelIntrospectionNode(private val viewModel: Medicati
                 "datesError" to JsonValue.of(it.datesError),
                 "timeError" to JsonValue.of(it.timeError),
                 "canAddTime" to JsonValue.Bool(it.canAddTime),
+                "canChangeAsNeeded" to JsonValue.Bool(it.canChangeAsNeeded),
+                "isValid" to JsonValue.Bool(it.isValid),
                 "canSave" to JsonValue.Bool(it.canSave),
                 "isSaving" to JsonValue.Bool(it.isSaving),
             )

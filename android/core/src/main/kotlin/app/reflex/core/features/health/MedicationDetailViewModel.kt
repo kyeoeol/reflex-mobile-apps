@@ -4,7 +4,8 @@ import app.reflex.core.foundation.ViewModel
 import kotlinx.coroutines.CoroutineScope
 
 class MedicationDetailViewModel(
-    medicationId: String,
+    /** The medication this screen shows. (AppRoot removes the screen when it is deleted.) */
+    val medicationId: String,
     private val store: HealthStore,
     private val navigation: HealthNavigating,
     scope: CoroutineScope,
@@ -23,6 +24,7 @@ class MedicationDetailViewModel(
         val endDate: String?,
         val status: String,
         val adherenceLabel: String,
+        val adherenceCaption: String?,
         val takenCount: Int,
         val skippedCount: Int,
         val missedCount: Int,
@@ -55,26 +57,25 @@ class MedicationDetailViewModel(
     override fun update(state: State, message: Message): State = when (message) {
         is Message.ViewAction -> when (message.action) {
             Action.Edit -> {
-                if (state.id in store.current.days.medications) navigation.showMedicationEditor(state.id)
+                if (medicationId in store.current.days.medications) navigation.showMedicationEditor(medicationId)
                 state
             }
             Action.Archive -> {
-                store.archive(state.id)
+                store.archive(medicationId)
                 render(store.current, state)
             }
             Action.Restore -> {
-                store.restore(state.id)
+                store.restore(medicationId)
                 render(store.current, state)
             }
-            Action.Delete -> state.copy(isConfirmingDelete = true)
+            Action.Delete -> render(store.current, state.copy(isConfirmingDelete = true))
             Action.CancelDelete -> state.copy(isConfirmingDelete = false)
-            Action.ConfirmDelete -> when {
-                !state.isConfirmingDelete -> state
-                store.delete(state.id) is Change.Applied -> {
-                    navigation.close(this)
-                    state.copy(isConfirmingDelete = false)
-                }
-                else -> state
+            // The screen then disappears: AppRoot removes every screen of a medication that no longer exists.
+            Action.ConfirmDelete -> if (state.isConfirmingDelete) {
+                store.delete(medicationId)
+                render(store.current, state.copy(isConfirmingDelete = false))
+            } else {
+                state
             }
         }
         Message.StoreChanged -> render(store.current, state)
@@ -83,17 +84,18 @@ class MedicationDetailViewModel(
     companion object {
         /** The adherence window: the 30 days ending today. */
         private const val WINDOW_DAYS = 30L
+        private const val NO_DATA = "No data yet"
 
-        /** What the screen shows before the medication is known (deep link before load, unknown id). */
+        /** What the screen shows while the medication isn't known (before load, unknown or deleted id). */
         fun placeholder(id: String) = State(
             id = id, name = "", kind = "", dose = "", notes = "", schedule = "", startDate = "", endDate = null,
-            status = MedicationStatus.Active.code, adherenceLabel = "No data yet", takenCount = 0, skippedCount = 0,
-            missedCount = 0, history = emptyList(), canArchive = false, canRestore = false, isConfirmingDelete = false,
+            status = MedicationStatus.Active.code, adherenceLabel = NO_DATA, adherenceCaption = null, takenCount = 0,
+            skippedCount = 0, missedCount = 0, history = emptyList(), canArchive = false, canRestore = false,
+            isConfirmingDelete = false,
         )
 
-        /** A medication that no longer exists (just deleted) keeps showing what it showed. */
         fun render(snapshot: HealthSnapshot, previous: State): State {
-            val medication = snapshot.days.medications[previous.id] ?: return previous
+            val medication = snapshot.days.medications[previous.id] ?: return placeholder(previous.id)
             val today = snapshot.today
             val window = (WINDOW_DAYS - 1 downTo 0L).map { today.minusDays(it) }
             val occurrences = window.flatMap { day -> snapshot.days.occurrences(day).filter { it.medicationId == medication.id } }
@@ -101,25 +103,29 @@ class MedicationDetailViewModel(
             val taken = statuses.count { it == DoseStatus.Taken }
             val skipped = statuses.count { it == DoseStatus.Skipped }
             val missed = statuses.count { it == DoseStatus.Missed }
+            val resolved = taken + skipped + missed
             val scheduled = occurrences.zip(statuses)
                 .filter { (_, status) -> status != DoseStatus.Upcoming }
                 .map { (occurrence, _) -> DoseItem.of(occurrence, snapshot.now, snapshot.zone) }
             val asNeeded = window.flatMap { day -> snapshot.days.asNeededLogs(day).filter { it.medicationId == medication.id } }
                 .map(DoseItem::of)
+            // Newest first: date desc, time desc (`takenAt` for as-needed entries), then id asc.
             val history = (scheduled + asNeeded).sortedWith(
                 compareByDescending<DoseItem> { it.date }.thenByDescending { it.time ?: it.takenAt.orEmpty() }.thenBy { it.id },
             )
             val status = medication.status(today)
+            val percent = adherencePercent(taken, resolved)
             return previous.copy(
                 name = medication.name,
                 kind = medication.kind,
                 dose = medication.dose,
                 notes = medication.notes,
-                schedule = medication.scheduleSummary(today),
+                schedule = medication.scheduleSummary(),
                 startDate = HealthTime.date(medication.startDate),
                 endDate = medication.endDate?.let(HealthTime::date),
                 status = status.code,
-                adherenceLabel = adherencePercent(taken, taken + skipped + missed)?.let { "$it%" } ?: "No data yet",
+                adherenceLabel = percent?.let { "$it%" } ?: NO_DATA,
+                adherenceCaption = percent?.let { "$taken of $resolved doses taken in the last 30 days" },
                 takenCount = taken,
                 skippedCount = skipped,
                 missedCount = missed,

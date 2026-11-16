@@ -53,13 +53,14 @@ class MedicationsViewModel(
         fun render(snapshot: HealthSnapshot): State {
             val today = snapshot.today
             val byStatus = snapshot.data.medications
-                .sortedWith(compareBy({ nameKey(it.name) }, { it.id }))
+                .sortedWith(byName({ it.name }, { it.id }))
                 .groupBy { it.status(today) }
             fun items(status: MedicationStatus) = byStatus[status].orEmpty().map {
-                MedicationItem(it.id, it.name, it.kind, it.dose, it.scheduleSummary(today))
+                MedicationItem(it.id, it.name, it.kind, it.dose, it.scheduleSummary())
             }
             return State(
                 isLoading = snapshot.isLoading,
+                // A failed load shows no medication at all, so it counts as empty too.
                 isEmpty = !snapshot.isLoading && snapshot.data.medications.isEmpty(),
                 active = items(MedicationStatus.Active),
                 ended = items(MedicationStatus.Ended),

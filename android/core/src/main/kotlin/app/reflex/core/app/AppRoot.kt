@@ -1,5 +1,6 @@
 package app.reflex.core.app
 
+import app.reflex.core.features.health.HealthData
 import app.reflex.core.features.health.HealthNavigating
 import app.reflex.core.features.health.HealthStore
 import app.reflex.core.features.health.HistoryViewModel
@@ -70,7 +71,8 @@ sealed interface Route : Routable {
  *     AppRoot ─ TabNavigator(today | medications | history) ─ StackNavigator(routes) ─ <top route's ViewModel>
  *
  * Also the factory for new screens: ViewModels ask for navigation through [HealthNavigating], and AppRoot builds
- * the next ViewModel with its services and pushes it on the current tab's stack.
+ * the next ViewModel with its services and pushes it on the current tab's stack. Every method runs on the core
+ * thread (Main in the app).
  */
 class AppRoot internal constructor(private val services: Services) : HealthNavigating {
     private val health = HealthStore(services.healthRepository, services.reminderScheduler, services.clock, services.scope)
@@ -89,12 +91,18 @@ class AppRoot internal constructor(private val services: Services) : HealthNavig
         initial = TAB_TODAY,
     )
 
+    init {
+        health.onDataChange(::removeStaleScreens)
+    }
+
     /**
      * Deep links change navigator state, so they behave identically in the CLI. Paths are scheme-agnostic:
      * - `<s>://today`: the Today tab, reset to its root;
-     * - `<s>://medication/<id>`: the Medications tab, reset to `[Medications, MedicationDetail(id)]`;
-     * - `<s>://reminder/<slot>[/taken|/skipped|/snooze]`: a notification tap (Today, reset) and its action button.
-     *   Actions apply once the stored data has loaded (links can arrive right after `Core(...)`).
+     * - `<s>://medication/<id>`: the Medications tab, reset to its root; once the data has loaded, the medication's
+     *   detail is pushed if it exists;
+     * - `<s>://reminder/<slot>[/…]`: the Today tab, reset (a notification tap). Never logs anything: any app can
+     *   open a URL, so notification actions come only through [handleReminderResponse].
+     * Returns false (and changes nothing) for links that don't route anywhere.
      */
     fun open(url: String): Boolean {
         val uri = runCatching { URI(url) }.getOrNull() ?: return false
@@ -102,10 +110,29 @@ class AppRoot internal constructor(private val services: Services) : HealthNavig
         return when (parts.firstOrNull()) {
             "today" -> parts.size == 1 && showToday()
             "medication" -> parts.size == 2 && showMedicationFromLink(parts[1])
-            "reminder" -> openReminder(parts.drop(1))
+            "reminder" -> parts.size >= 2 && Slot.parse(parts[1]) != null && showToday()
             else -> false
         }
     }
+
+    /**
+     * A notification response: [slot] is the reminder's slot (`yyyy-MM-ddTHH:mm`), [action] one of `open`, `taken`,
+     * `skipped`, `snooze`. Selects Today (reset to its root); then, once the data has loaded, applies the action.
+     * Returns once the response has been fully handled: data loaded (or failed to load), applied, saved and the
+     * reminders reconciled. Returns false (and changes nothing) for a malformed slot or an unknown action.
+     */
+    suspend fun handleReminderResponse(slot: String, action: String): Boolean {
+        val parsed = Slot.parse(slot) ?: return false
+        if (action !in REMINDER_ACTIONS) return false
+        val response = REMINDER_RESPONSES[action]
+        showToday()
+        if (health.awaitLoad() && response != null) health.respond(parsed, response)
+        health.settle()
+        return true
+    }
+
+    /** Returns once the initial load and every save/reconciliation requested so far have finished. */
+    suspend fun settle() = health.settle()
 
     private fun showToday(): Boolean {
         tabs.select(TAB_TODAY)
@@ -115,20 +142,28 @@ class AppRoot internal constructor(private val services: Services) : HealthNavig
 
     private fun showMedicationFromLink(id: String): Boolean {
         tabs.select(TAB_MEDICATIONS)
-        tabs.selected.stack.reset(listOf(medicationsRoot, makeDetail(id)))
+        val stack = tabs.selected.stack
+        stack.reset(listOf(medicationsRoot))
+        health.whenLoaded { loaded ->
+            if (loaded && id in health.current.days.medications) stack.push(makeDetail(id))
+        }
         return true
     }
 
-    private fun openReminder(parts: List<String>): Boolean {
-        val slot = parts.firstOrNull()?.let(Slot::parse) ?: return false
-        val response = when (parts.size) {
-            1 -> null
-            2 -> REMINDER_RESPONSES[parts[1]] ?: return false
-            else -> return false
+    /** Whenever a medication is gone, every detail and edit-mode editor of it leaves every stack. */
+    private fun removeStaleScreens(data: HealthData) {
+        val ids = data.medications.mapTo(HashSet()) { it.id }
+        for (tab in tabs.tabs) {
+            val routes = tab.stack.routes.value
+            val kept = routes.filter { route ->
+                when (route) {
+                    is Route.MedicationDetail -> route.viewModel.medicationId in ids
+                    is Route.MedicationEditor -> route.viewModel.editedMedicationId.let { it == null || it in ids }
+                    else -> true
+                }
+            }
+            if (kept.size != routes.size) tab.stack.reset(kept)
         }
-        showToday()
-        if (response != null) health.whenLoaded { health.respond(slot, response) }
-        return true
     }
 
     // Navigation requested by the screens (HealthNavigating)
@@ -156,6 +191,7 @@ class AppRoot internal constructor(private val services: Services) : HealthNavig
         const val TAB_MEDICATIONS = "medications"
         const val TAB_HISTORY = "history"
 
+        private val REMINDER_ACTIONS = setOf("open", "taken", "skipped", "snooze")
         private val REMINDER_RESPONSES = mapOf(
             "taken" to ReminderResponse.Taken,
             "skipped" to ReminderResponse.Skipped,
