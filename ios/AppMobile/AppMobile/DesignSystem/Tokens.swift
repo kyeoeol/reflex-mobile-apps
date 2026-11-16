@@ -21,6 +21,7 @@ enum HealthColors {
     static let tertiary = adaptive(0xB3B3B3, 0x4D4D4D)
     static let body = adaptive(0x474747, 0xB8B8B8)
     static let border = adaptive(0xE6E6E6, 0x1A1A1A)
+    static let controlBorder = adaptive(0x8C8C8C, 0x757575)
     static let strongBorder = adaptive(0xCCCCCC, 0x333333)
     static let buttonSecondary = adaptive(0xF2F2F2, 0x1A1A1A)
     static let onPrimary = background
@@ -31,7 +32,6 @@ enum HealthColors {
     static let brandTop = Color(red: 1, green: 97 / 255, blue: 173 / 255)
     static let brandBottom = Color(red: 1, green: 39 / 255, blue: 25 / 255)
     static let brandGradient = LinearGradient(colors: [brandTop, brandBottom], startPoint: .top, endPoint: .bottom)
-    static let toastBackground = Color(red: 34 / 255, green: 34 / 255, blue: 34 / 255)
 }
 
 enum HealthSpacing {

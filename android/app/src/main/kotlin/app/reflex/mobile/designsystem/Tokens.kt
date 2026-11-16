@@ -16,6 +16,7 @@ data class HealthPalette(
     val body: Color,
     val border: Color,
     val strongBorder: Color,
+    val controlBorder: Color,
     val buttonSecondary: Color,
     val success: Color,
     val successBackground: Color,
@@ -34,6 +35,7 @@ val HealthLightColors = HealthPalette(
     body = Color(0xFF474747),
     border = Color(0xFFE6E6E6),
     strongBorder = Color(0xFFCCCCCC),
+    controlBorder = Color(0xFF8C8C8C),
     buttonSecondary = Color(0xFFF2F2F2),
     success = Color(0xFF007A51),
     successBackground = Color(0xFFDBF8EB),
@@ -52,6 +54,7 @@ val HealthDarkColors = HealthPalette(
     body = Color(0xFFB8B8B8),
     border = Color(0xFF1A1A1A),
     strongBorder = Color(0xFF333333),
+    controlBorder = Color(0xFF757575),
     buttonSecondary = Color(0xFF1A1A1A),
     success = Color(0xFF53D6A3),
     successBackground = Color(0xFF002218),
@@ -62,7 +65,6 @@ val HealthDarkColors = HealthPalette(
 object HealthBrand {
     val top = Color(0xFFFF61AD)
     val bottom = Color(0xFFFF2719)
-    val toastBackground = Color(0xFF222222)
 }
 
 object HealthSpacing {
