@@ -1,5 +1,6 @@
 package app.reflex.mobile.features.health
 
+import android.text.format.DateFormat
 import app.reflex.mobile.designsystem.DoseStatusKind
 import java.time.Instant
 import java.time.LocalDate
@@ -23,9 +24,14 @@ object HealthFormat {
     fun date(text: String): String =
         calendarDate(text)?.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(Locale.getDefault())) ?: text
 
-    /** `2026-11-17` → "Tuesday, November 17, 2026" (device locale). */
-    fun longDate(text: String): String =
-        calendarDate(text)?.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(Locale.getDefault())) ?: text
+    /** `2026-11-17` → "Tuesday, November 17": weekday, month and day, no year (the device locale's own order). */
+    fun dayDate(text: String): String {
+        val locale = Locale.getDefault()
+        val pattern = DateFormat.getBestDateTimePattern(locale, "EEEEMMMMd")
+        val date = calendarDate(text) ?: return text
+        return runCatching { date.format(DateTimeFormatter.ofPattern(pattern, locale)) }
+            .getOrElse { date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale)) }
+    }
 
     fun payloadDate(date: LocalDate): String = PAYLOAD_DATE.format(date)
 

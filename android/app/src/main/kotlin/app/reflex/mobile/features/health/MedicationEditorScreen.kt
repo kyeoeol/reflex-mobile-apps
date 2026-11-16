@@ -1,5 +1,6 @@
 package app.reflex.mobile.features.health
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -12,10 +13,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedIconButton
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -47,6 +49,7 @@ import app.reflex.mobile.designsystem.PillSegmentedControl
 import app.reflex.mobile.designsystem.PillSelect
 import app.reflex.mobile.designsystem.PillToggle
 import app.reflex.mobile.designsystem.WeekdayPicker
+import app.reflex.mobile.designsystem.scaledIconSize
 
 private val KINDS = listOf("medication" to "Medication", "supplement" to "Supplement")
 
@@ -68,8 +71,9 @@ fun MedicationEditorScreen(vm: MedicationEditorViewModel, onCancel: () -> Unit) 
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = HealthSpacing.screen),
             verticalArrangement = Arrangement.spacedBy(HealthSpacing.lg),
         ) {
-            HealthTopBar(if (state.mode == "edit") "Edit medication" else "Add medication", backTitle = "Cancel",
-                onBack = onCancel, backModifier = Modifier.testTag("editor.cancel"))
+            // Cancel is not a back step (no chevron); the title is the screen's large title.
+            HealthTopBar("", backTitle = "Cancel", onBack = onCancel, backIcon = null, backModifier = Modifier.testTag("editor.cancel"))
+            ScreenTitle(if (state.mode == "edit") "Edit medication" else "Add medication")
 
             BufferedTextField("Name", state.name, { vm.state.value.name }, { vm.send(Action.SetName(it)) },
                 error = state.nameError, tag = "editor.name", errorTag = "editor.error.name")
@@ -77,7 +81,7 @@ fun MedicationEditorScreen(vm: MedicationEditorViewModel, onCancel: () -> Unit) 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Kind", style = HealthType.meta, color = colors.primary)
                 PillSegmentedControl(KINDS.map { it.second }, KINDS.indexOfFirst { it.first == state.kind },
-                    onSelect = { vm.send(Action.SetKind(KINDS[it].first)) },
+                    onSelect = { vm.send(Action.SetKind(KINDS[it].first)) }, modifier = Modifier.fillMaxWidth(),
                     itemModifier = { Modifier.testTag("editor.kind.${KINDS[it].first}") })
             }
 
@@ -85,19 +89,23 @@ fun MedicationEditorScreen(vm: MedicationEditorViewModel, onCancel: () -> Unit) 
                 placeholder = "e.g. 500 mg", tag = "editor.dose")
 
             PillToggle("As needed", state.asNeeded, { vm.send(Action.SetAsNeeded(!state.asNeeded)) },
-                modifier = Modifier.testTag("editor.asNeeded"), enabled = state.canChangeAsNeeded)
+                modifier = Modifier.fillMaxWidth().testTag("editor.asNeeded"), enabled = state.canChangeAsNeeded)
 
             if (!state.asNeeded) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Times", style = HealthType.meta, color = colors.primary)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         for (time in state.times) {
-                            Row(Modifier.testTag("editor.time.$time").semantics(mergeDescendants = true) {},
+                            // One outlined pill: the time, then its remove button.
+                            Row(Modifier.testTag("editor.time.$time").semantics(mergeDescendants = true) {}
+                                .border(1.dp, colors.strongBorder, CircleShape).padding(start = 16.dp),
                                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(time, style = HealthType.row, color = colors.primary, modifier = Modifier.padding(start = 4.dp))
-                                OutlinedIconButton({ vm.send(Action.RemoveTime(time)) },
-                                    modifier = Modifier.testTag("editor.time.$time.remove").sizeIn(minWidth = 48.dp, minHeight = 48.dp)) {
-                                    Icon(HealthIcons.Close, contentDescription = "Remove $time", modifier = Modifier.size(20.dp))
+                                Text(time, style = HealthType.row, color = colors.primary)
+                                IconButton({ vm.send(Action.RemoveTime(time)) },
+                                    modifier = Modifier.testTag("editor.time.$time.remove")
+                                        .sizeIn(minWidth = scaledIconSize(48.dp), minHeight = scaledIconSize(48.dp))) {
+                                    Icon(HealthIcons.Close, contentDescription = "Remove $time", tint = colors.primary,
+                                        modifier = Modifier.size(scaledIconSize(20.dp)))
                                 }
                             }
                         }
@@ -117,14 +125,24 @@ fun MedicationEditorScreen(vm: MedicationEditorViewModel, onCancel: () -> Unit) 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Start date", style = HealthType.meta, color = colors.primary)
                 PillSelect("Start date", HealthFormat.date(state.startDate), { picker = EditorPicker.StartDate },
-                    modifier = Modifier.testTag("editor.startDate"))
+                    modifier = Modifier.testTag("editor.startDate"), fillWidth = true)
                 Text("End date", style = HealthType.meta, color = colors.primary)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val endDate = @Composable { modifier: Modifier ->
                     PillSelect("End date", state.endDate?.let(HealthFormat::date) ?: "No end date", { picker = EditorPicker.EndDate },
-                        modifier = Modifier.testTag("editor.endDate"))
-                    if (state.endDate != null) PillButton("Clear", { vm.send(Action.SetEndDate(null)) },
+                        modifier = modifier.testTag("editor.endDate"), fillWidth = true)
+                }
+                val clear = @Composable {
+                    PillButton("Clear", { vm.send(Action.SetEndDate(null)) },
                         modifier = Modifier.testTag("editor.endDate.clear").semantics { contentDescription = "Clear end date" },
                         kind = PillButtonKind.Outline)
+                }
+                // Full width; Clear sits beside it, or below it at accessibility text sizes.
+                when {
+                    state.endDate == null -> endDate(Modifier)
+                    isLargeText() -> { endDate(Modifier); clear() }
+                    else -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        endDate(Modifier.weight(1f)); clear()
+                    }
                 }
                 state.datesError?.let { ErrorCaption(it, "editor.error.dates") }
             }

@@ -22,7 +22,7 @@ import app.reflex.mobile.designsystem.FloatingPillButton
 import app.reflex.mobile.designsystem.HealthIcons
 import app.reflex.mobile.designsystem.HealthSpacing
 import app.reflex.mobile.designsystem.HealthTopBar
-import app.reflex.mobile.designsystem.ListRow
+import app.reflex.mobile.designsystem.MedicationRow
 import app.reflex.mobile.designsystem.PillButton
 import app.reflex.mobile.designsystem.SectionHeader
 
@@ -62,7 +62,7 @@ private fun MedicationSection(title: String, id: String, items: List<MedicationI
         SectionHeader(title, modifier = Modifier.padding(bottom = 8.dp))
         for (item in items) {
             val meta = listOf(item.dose, HealthFormat.kind(item.kind)).filter { it.isNotEmpty() }.joinToString(" · ")
-            ListRow(item.name, meta, item.schedule,
+            MedicationRow(item.name, meta, item.schedule,
                 modifier = Modifier.testTag("medications.item.${item.id}").heightIn(min = 48.dp)
                     .clickable(role = Role.Button, onClickLabel = "Open ${item.name}") { vm.send(Action.Open(item.id)) })
         }
