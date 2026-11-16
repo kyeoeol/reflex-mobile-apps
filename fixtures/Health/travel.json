@@ -1,0 +1,10 @@
+{
+  "storage": {
+    "health.data": "{\"version\":1,\"medications\":[{\"id\":\"vitd\",\"name\":\"Vitamin D\",\"kind\":\"supplement\",\"dose\":\"1 capsule\",\"notes\":\"\",\"asNeeded\":false,\"startDate\":\"2026-11-01\",\"endDate\":null,\"schedules\":[{\"from\":\"2026-11-01\",\"times\":[\"08:00\"],\"weekdays\":[1,2,3,4,5,6,7]}],\"archived\":[]}],\"logs\":[{\"id\":\"l1\",\"medicationId\":\"vitd\",\"date\":\"2026-11-15\",\"time\":\"08:00\",\"status\":\"taken\",\"takenAt\":\"2026-11-15T08:10:00+09:00\",\"name\":\"Vitamin D\",\"dose\":\"1 capsule\"}],\"snoozes\":[]}"
+  },
+  "device": {
+    "now": "2026-11-16T07:00:00",
+    "timeZone": "America/Los_Angeles",
+    "notificationPermission": "authorized"
+  }
+}

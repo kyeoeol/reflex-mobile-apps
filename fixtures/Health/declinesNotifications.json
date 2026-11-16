@@ -1,0 +1,8 @@
+{
+  "extends": [
+    "Health.empty"
+  ],
+  "device": {
+    "notificationRequestResult": "denied"
+  }
+}

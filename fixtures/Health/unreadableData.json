@@ -1,0 +1,10 @@
+{
+  "storage": {
+    "health.data": "{\"version\": 1, \"medications\": ["
+  },
+  "device": {
+    "now": "2026-11-16T09:00:00",
+    "timeZone": "Asia/Seoul",
+    "notificationPermission": "authorized"
+  }
+}

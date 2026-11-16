@@ -8,14 +8,15 @@ iOS and Android apps built to explore Shopify's Reflex architecture, as introduc
 - **Introspection.** Every screen is exposed as JSON (name · state · actions), so tests, agents and the CLI drive the
   app exactly the way a user would.
 
-The product itself is not decided yet; a small `Sample` feature (list → detail) shows every part working end to end.
+The product is **Health Beta**: log medications and supplements and get a local reminder at each dose time
+(spec: [docs/health/CONTRACT.md](docs/health/CONTRACT.md)). iOS 27 / Swift 6 (SwiftData), Android 17 (Room).
 
 ## Getting started
 
 ```sh
 ./reflex setup      # once per machine: checks/installs Xcode tools, Bun, JDK 21, XcodeGen, Android SDK
 ./reflex test       # behavior tests on iOS and Android (headless)
-./reflex cli ios --fixture Sample.default    # then type: ls · do SelectItem {"id": "1"} · tree · quit
+./reflex cli ios --fixture Health.default    # then type: ls · do Take {"doseId": "vitd@2026-11-16T08:00"} · tree · quit
 ./reflex ci         # lint + unit + behavior tests (the merge gate)
 ./reflex help       # everything else
 ```

@@ -1,6 +1,0 @@
-{
-  "extends": ["Sample.default"],
-  "graphql": [
-    {"operation": "SampleSave", "error": {"kind": "http", "status": 500}}
-  ]
-}

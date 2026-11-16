@@ -12,7 +12,7 @@ android {
     defaultConfig {
         // Non-store beta identifier (public repo: no personal/team identifiers or signing config here).
         applicationId = "com.beta.health"
-        minSdk = 26
+        minSdk = 37
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"

@@ -8,7 +8,7 @@ import PackageDescription
 // No third-party dependencies, by design.
 let package = Package(
     name: "IntrospectionKit",
-    platforms: [.macOS(.v14), .iOS(.v17)],
+    platforms: [.macOS(.v14), .iOS("27.0")],
     products: [
         .library(name: "IntrospectionKit", targets: ["IntrospectionKit"]),
         .library(name: "ReflexHost", targets: ["ReflexHost"]),
@@ -17,5 +17,6 @@ let package = Package(
         .target(name: "IntrospectionKit"),
         .target(name: "ReflexHost", dependencies: ["IntrospectionKit"]),
         .testTarget(name: "IntrospectionKitTests", dependencies: ["IntrospectionKit", "ReflexHost"]),
-    ]
+    ],
+    swiftLanguageModes: [.v6]
 )

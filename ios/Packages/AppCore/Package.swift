@@ -6,10 +6,11 @@ import PackageDescription
 // Platform needs are declared as protocols in Foundation/Platform.swift and injected by the host.
 let package = Package(
     name: "AppCore",
-    platforms: [.macOS(.v14), .iOS(.v17)],
+    platforms: [.macOS(.v14), .iOS("27.0")],
     products: [.library(name: "AppCore", targets: ["AppCore"])],
     dependencies: [.package(path: "../IntrospectionKit")],
     targets: [
         .target(name: "AppCore", dependencies: [.product(name: "IntrospectionKit", package: "IntrospectionKit")]),
-    ]
+    ],
+    swiftLanguageModes: [.v6]
 )

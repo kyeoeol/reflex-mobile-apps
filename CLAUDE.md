@@ -4,8 +4,8 @@ Native iOS (Swift/SwiftUI) and Android (Kotlin/Compose) apps built on the **Refl
 the views lives in a headless core, every screen's ViewModel has the same strict shape and is exposed as JSON
 (name · state · actions), and **one Bun test suite drives both cores**, so both apps are kept behaving the same.
 
-The product is not decided yet. Whatever it becomes, it is built this way. The infrastructure is already in
-place and working end to end; features plug into it.
+The product is **Health Beta**: medication and supplement logging with local dose reminders, nothing else
+(spec: `docs/health/CONTRACT.md`). Every feature plugs into the same infrastructure.
 
 All code, comments, docs, commit messages and skills in this repo are written in **English**.
 
@@ -98,14 +98,14 @@ tools/                           check-architecture.ts (lint), toolchain-gate.sh
 
 | Thing | Convention | Example |
 |---|---|---|
-| Screen | `<Name>ViewModel` in `Features/<Feature>/` (Swift) / `features/<feature>/` (Kotlin) | `SampleDetailViewModel` |
-| Node name | ViewModel name without `ViewModel`, PascalCase | `"SampleDetail"` |
-| Own action title | Action case in PascalCase | `.setCount` → `"SetCount"` |
+| Screen | `<Name>ViewModel` in `Features/<Feature>/` (Swift) / `features/<feature>/` (Kotlin) | `MedicationDetailViewModel` |
+| Node name | ViewModel name without `ViewModel`, PascalCase | `"MedicationDetail"` |
+| Own action title | Action case in PascalCase | `.addTime` → `"AddTime"` |
 | Lent action title | camelCase, only containers lend | `goBack`, `selectTab`, `dismiss` |
 | Node file | `<VM>+Introspection.swift` / `<VM>IntrospectionNode.kt` (+ a line in `IntrospectionRegistrations.kt`) | |
-| Action input | `struct XInput: IntrospectionInput` / `@Serializable data class XInput`; required `T` or optional `T?`, no defaults | `SetCountInput(count)` |
-| GraphQL operation | same `operationName` on both platforms; fixtures match on it | `"SampleSave"` |
-| Fixture | `fixtures/<Domain>/<camelCaseScenario>.json` → `fixture("Domain.scenario")` | `Sample.saveFails` |
+| Action input | `struct XInput: IntrospectionInput` / `@Serializable data class XInput`; required `T` or optional `T?`, no defaults | `AddTimeInput(time)` |
+| GraphQL operation | same `operationName` on both platforms; fixtures match on it | (none yet: Health Beta is local-only) |
+| Fixture | `fixtures/<Domain>/<camelCaseScenario>.json` → `fixture("Domain.scenario")` | `Health.permissionDenied` |
 | Behavior test | `tests/behavior/<feature>.cli-test.ts`, names `given <precondition>, <what the user can do/sees>` | |
 
 ## Decisions (where this repo fills gaps in the original architecture)
@@ -131,17 +131,29 @@ Keep this list current: if you change one of these, update it in the same change
 - `precondition(name, expectation?)` takes an optional expectation (wait for initial-load state without sleeps).
 - Fixture merge: a later fixture's entries for operation X replace *all* earlier entries for X. Entries for one
   operation are consumed in order; the last repeats. Unknown top-level keys are rejected.
-- Navigation containers: only `StackNavigator` exists so far. Tab/Modal contracts are specified in
-  `reflex-new-screen` and are added (on both platforms) when the product needs them.
+- Navigation containers: `StackNavigator` and `TabNavigator` (tabs `today`, `medications`, `history`, each its own
+  stack). The Modal contract is specified in `reflex-new-screen` and is added (on both platforms) when needed.
+- Platforms: iOS 27.0 deployment target, Swift 6 language mode, Swift Concurrency only (async/await, actors,
+  `AsyncStream`; no GCD or completion handlers). Android 17: `minSdk` = `targetSdk` = 37; coroutines and `Flow`.
+  AppCore/IntrospectionKit still build for macOS 14 so the headless CLI runs on the development Mac.
+- Persistence: Health data goes through the `HealthRepository` edge: SwiftData on iOS and Room on Android, both in
+  the app shells (Core stays free of them), and an in-memory repository in the CLIs seeded from the fixture's
+  `storage["health.data"]` JSON (format in `docs/health/CONTRACT.md`). The generic `Storage` edge stays for
+  key-value needs.
+- Time and notifications are edges too: `Clock` (now, time zone, change events) and `ReminderScheduler`
+  (permission, pending reminders). Their fixture values live in the existing `device` section (`now`, `timeZone`,
+  `notificationPermission`, `notificationRequestResult`, `remindersMayBeLate`); no new top-level fixture key.
+  Core computes the complete desired reminder set; the platform scheduler only reconciles it (diff by id).
+- Notification taps and actions enter Core as deep links (`<scheme>://reminder/<slot>[/taken|/skipped|/snooze]`),
+  so they are testable headlessly with `deeplink:` like any other link.
 - Apps: iOS project from XcodeGen; Android `:app` is included only when an Android SDK is present
   (`REFLEX_SKIP_APP=1` skips it). Debug socket server: iOS `#if DEBUG`, Android `src/debug` + `debugImplementation`.
-- The `Sample` feature is a reference implementation (see below).
 
-## The Sample feature (reference implementation)
+## The Health feature (reference implementation)
 
-`Sample` (list → detail with a counter, save, errors, deep link) demonstrates every part of the architecture and is
-what the skills point to as the canonical example. **When the first real feature lands, delete it** (the
-`reflex-feature` skill lists every file) and make the real first screen the root route in `AppRoot`.
+`Health` (Today, Medications, MedicationEditor, MedicationDetail, History, Reminders) is the product and the
+canonical example the skills point to. Its spec is `docs/health/CONTRACT.md` (scenarios: `docs/health/SCENARIOS.md`);
+its tests are `tests/behavior/health-*.cli-test.ts`.
 
 ## Product identity (non-store beta)
 

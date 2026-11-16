@@ -1,0 +1,10 @@
+{
+  "storage": {
+    "health.data": "{\"version\":1,\"medications\":[{\"id\":\"melatonin\",\"name\":\"Melatonin\",\"kind\":\"supplement\",\"dose\":\"3 mg\",\"notes\":\"\",\"asNeeded\":false,\"startDate\":\"2026-11-01\",\"endDate\":null,\"schedules\":[{\"from\":\"2026-11-01\",\"times\":[\"23:30\"],\"weekdays\":[1,2,3,4,5,6,7]}],\"archived\":[]}],\"logs\":[],\"snoozes\":[]}"
+  },
+  "device": {
+    "now": "2026-11-17T00:15:00",
+    "timeZone": "Asia/Seoul",
+    "notificationPermission": "authorized"
+  }
+}

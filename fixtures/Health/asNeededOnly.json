@@ -1,0 +1,10 @@
+{
+  "storage": {
+    "health.data": "{\"version\":1,\"medications\":[{\"id\":\"ibuprofen\",\"name\":\"Ibuprofen\",\"kind\":\"medication\",\"dose\":\"200 mg\",\"notes\":\"\",\"asNeeded\":true,\"startDate\":\"2026-11-01\",\"endDate\":null,\"schedules\":[],\"archived\":[]}],\"logs\":[],\"snoozes\":[]}"
+  },
+  "device": {
+    "now": "2026-11-16T09:00:00",
+    "timeZone": "Asia/Seoul",
+    "notificationPermission": "authorized"
+  }
+}
