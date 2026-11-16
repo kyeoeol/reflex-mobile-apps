@@ -19,26 +19,26 @@ public final class LineWriter: Sendable {
 }
 
 /// Headless transport: NDJSON requests on stdin, responses and events on stdout.
-/// stdin is read on a background thread; every request is handled on the main actor, in order.
+/// stdin is read (blocking) on a background thread into an `AsyncStream`; the main actor hands every line to the
+/// host in order, and exits once stdin is closed and every request has been answered.
 public enum StdioTransport {
     @MainActor
     public static func run(_ host: ReflexHost) -> Never {
         let out = LineWriter.stdout
         host.events.addWriter { out.write($0) }
         out.write(host.readyEvent)
-        Thread.detachNewThread { readLines(into: host, replyingTo: out) }
+        let (lines, continuation) = AsyncStream<String>.makeStream()
+        Thread.detachNewThread {
+            while let line = readLine(strippingNewline: true) { continuation.yield(line) }
+            continuation.finish()
+        }
+        Task { @MainActor in
+            for await line in lines { host.handle(line) { out.write($0) } }
+            await host.drain()
+            exit(0)
+        }
         // Not dispatchMain(): it exits the main pthread, and MainActor work must run on the main thread.
         while true { RunLoop.main.run() }
-    }
-
-    /// Runs on a background thread; hops to the main actor for every request.
-    private nonisolated static func readLines(into host: ReflexHost, replyingTo out: LineWriter) {
-        while let line = readLine(strippingNewline: true) {
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated { host.handle(line) { out.write($0) } }
-            }
-        }
-        DispatchQueue.main.async { exit(0) }
     }
 }
 
